@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:bluepulse/update/semver.dart';
 import 'package:bluepulse/update/transport.dart';
 import 'package:bluepulse/update/update_service.dart';
@@ -116,6 +117,25 @@ void main() {
     expect(s.error, contains('checksum'));
     expect(layout.installed().map((v) => '${v.version}'), ['1.0.0']);
   });
+
+  test('the C++ runtime goes beside the program, once', () {
+    final build = fakeFlutterBuild(tmp, '1.1.0');
+    File(p.join(build.path, 'vcruntime140.dll')).writeAsStringSync('from build');
+    final rt = Directory(p.join(tmp.path, 'crt'))..createSync();
+    final runtime = [
+      for (final n in release.vcRuntime) File(p.join(rt.path, n))..writeAsStringSync('crt $n'),
+    ];
+    final launcher = File(p.join(tmp.path, 'launcher.exe'))..writeAsStringSync('launcher');
+    final zip = release.buildWindowsZip(flutterBuild: build, launcher: launcher, version: '1.1.0', runtime: runtime);
+    final names = ZipDecoder().decodeBytes(zip).files.map((f) => f.name).toList();
+    const dir = 'BluePulse/versions/BluePulse-v1.1.0';
+    expect(names, containsAll(['$dir/msvcp140.dll', '$dir/vcruntime140.dll', '$dir/vcruntime140_1.dll']));
+    expect(names.where((n) => n.endsWith('/vcruntime140.dll')).length, 1, reason: 'the build’s own copy wins');
+  });
+
+  test('this machine can supply the runtime', () {
+    expect(release.findVcRuntime().map((f) => p.basename(f.path).toLowerCase()), release.vcRuntime);
+  }, skip: Platform.isWindows ? false : 'Windows only');
 
   test('release tool reads the version and the changelog section', () {
     expect(release.readVersion('name: x\nversion: 1.2.3+4\n'), '1.2.3');

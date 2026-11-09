@@ -30,6 +30,8 @@ about them.
   it). Android downloads and verifies the APK and opens the system installer. `minimumVersion` in
   `latest.json` can make an update required; otherwise *Later* is always offered.
 - **Release packaging**: `tool/package_release.dart` builds the zip (launcher + version folder), the
-  APK, `latest.json` with checksums and the notes from this changelog.
+  APK, `latest.json` with checksums and the notes from this changelog. The Microsoft C++ runtime
+  (`msvcp140`, `vcruntime140`, `vcruntime140_1`) goes inside each version folder, so a fresh,
+  locked-down PC needs nothing installed — only the build machine needs Flutter and Visual Studio.
 - **Not yet**: on-air test with real devices (toolchains pending), Sessions / CSV export, Android
   background scanning, configuring devices over GATT.

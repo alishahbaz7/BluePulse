@@ -55,19 +55,62 @@ String changelogSection(String changelog, String version) {
 
 String sha256Of(List<int> bytes) => sha256.convert(bytes).toString();
 
+/// The Microsoft C++ runtime a Flutter Windows app links against. Bundled beside the program so a
+/// fresh, locked-down PC runs BluePulse with nothing installed.
+const vcRuntime = ['msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'];
+
+/// The x64 runtime files from the newest Visual Studio redist folder, else System32; empty if neither
+/// has all three.
+List<File> findVcRuntime() {
+  final vswhere = File(p.join(Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)',
+      'Microsoft Visual Studio', 'Installer', 'vswhere.exe'));
+  if (vswhere.existsSync()) {
+    final r = Process.runSync(vswhere.path, ['-latest', '-products', '*', '-property', 'installationPath']);
+    final redist = Directory(p.join((r.stdout as String).trim(), 'VC', 'Redist', 'MSVC'));
+    if (redist.existsSync()) {
+      final versions = redist.listSync().whereType<Directory>().toList()..sort((a, b) => b.path.compareTo(a.path));
+      for (final v in versions) {
+        final x64 = Directory(p.join(v.path, 'x64'));
+        if (!x64.existsSync()) continue;
+        for (final crt in x64.listSync().whereType<Directory>().where((d) => RegExp(r'Microsoft\.VC\d+\.CRT$').hasMatch(d.path))) {
+          final files = [for (final n in vcRuntime) File(p.join(crt.path, n))];
+          if (files.every((f) => f.existsSync())) return files;
+        }
+      }
+    }
+  }
+  final system32 = p.join(Platform.environment['SystemRoot'] ?? r'C:\Windows', 'System32');
+  final files = [for (final n in vcRuntime) File(p.join(system32, n))];
+  return files.every((f) => f.existsSync()) ? files : const [];
+}
+
 /// The zip that both installs fresh (unzip, pin the launcher) and updates (the app takes the
-/// version folder and, if changed, the launcher).
-List<int> buildWindowsZip({required Directory flutterBuild, required File launcher, required String version}) {
+/// version folder and, if changed, the launcher). [runtime] files go beside the program unless the
+/// build already has them.
+List<int> buildWindowsZip({
+  required Directory flutterBuild,
+  required File launcher,
+  required String version,
+  List<File> runtime = const [],
+}) {
   final name = releaseName(version);
   final exe = File(p.join(flutterBuild.path, flutterExe));
   if (!exe.existsSync()) throw FileSystemException('Windows build not found', exe.path);
   final archive = Archive();
   archive.add(ArchiveFile.bytes('$installFolder/$launcherExe', launcher.readAsBytesSync()));
   archive.add(ArchiveFile.string('$installFolder/README.txt', _readme(version)));
+  final added = <String>{};
   for (final f in flutterBuild.listSync(recursive: true).whereType<File>()) {
     var rel = p.relative(f.path, from: flutterBuild.path).replaceAll(r'\', '/');
     if (rel == flutterExe) rel = '$name.exe'; // the program carries the release name
     archive.add(ArchiveFile.bytes('$installFolder/versions/$name/$rel', f.readAsBytesSync()));
+    added.add(rel.toLowerCase());
+  }
+  for (final f in runtime) {
+    final n = p.basename(f.path);
+    if (added.add(n.toLowerCase())) {
+      archive.add(ArchiveFile.bytes('$installFolder/versions/$name/$n', f.readAsBytesSync()));
+    }
   }
   return ZipEncoder().encodeBytes(archive);
 }
@@ -154,8 +197,14 @@ Future<void> main(List<String> argv) async {
   final assets = <String, Map<String, Object?>>{};
 
   if (File(p.join(winBuild.path, flutterExe)).existsSync()) {
-    final zip = buildWindowsZip(flutterBuild: winBuild, launcher: launcher, version: version);
+    final runtime = findVcRuntime();
+    if (runtime.isEmpty) {
+      stderr.writeln('  C++ runtime (${vcRuntime.join(', ')}) not found: PCs without it would not start the app');
+      exit(1);
+    }
+    final zip = buildWindowsZip(flutterBuild: winBuild, launcher: launcher, version: version, runtime: runtime);
     File(p.join(out.path, '$name.zip')).writeAsBytesSync(zip);
+    stdout.writeln('  C++ runtime bundled from ${p.dirname(runtime.first.path)}');
     assets['windows'] = asset('$name.zip', zip, repo, version);
     stdout.writeln('  $name.zip  ${(zip.length / 1048576).toStringAsFixed(1)} MB');
   } else {
