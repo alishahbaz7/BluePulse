@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "BluePulse - browser (demo data)",
+      "request": "launch",
+      "type": "dart",
+      "program": "main.dart",
+      "deviceId": "edge"
+    },
+    {
+      "name": "BluePulse - Windows (live Bluetooth)",
+      "request": "launch",
+      "type": "dart",
+      "program": "main.dart",
+      "deviceId": "windows"
+    },
+    {
+      "name": "BluePulse - Android phone",
+      "request": "launch",
+      "type": "dart",
+      "program": "main.dart"
+    }
+  ]
+}
