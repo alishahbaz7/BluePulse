@@ -94,12 +94,12 @@ People pin one program, the launcher; the app updates itself (PLAN.md §10a).
 ```powershell
 powershell -File launcher\build.ps1          # launcher (46 KB, Windows' own C# compiler)
 powershell -File launcher\test-launcher.ps1  # launcher checks
-dart run tool/package_release.dart --repo <owner/repo> --build   # dist\: zip, apk, latest.json
+dart run tool/package_release.dart --build   # dist\: zip, apk, latest.json
 ```
 
-The releases repository is compiled in with `--dart-define=UPDATE_REPO=owner/repo` (the packaging
-tool passes it); without it, Settings → Updates says the channel is not set. To try updates against
-a local server: `--dart-define=UPDATE_MANIFEST_URL=http://127.0.0.1:8000/latest.json`.
+Releases are published to the public repository **github.com/alishahbaz7/BluePulse** (source and
+releases together), set once in `lib/update/update_config.dart`; the packaging tool reads it too.
+To try updates against a local server: `--dart-define=UPDATE_MANIFEST_URL=http://127.0.0.1:8000/latest.json`.
 
 **Android signing:** every APK must carry the same release key, or phones refuse the update. Create
 it once (needs a JDK: `keytool -genkey -v -keystore eye-release.jks -keyalg RSA -keysize 2048

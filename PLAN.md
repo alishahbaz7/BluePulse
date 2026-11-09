@@ -34,7 +34,7 @@ Plan v1 · 09-11-2026
 | D8 | This folder is the repository (git); work happens on a branch named for the version, never on `main` | 09-11-2026 |
 | D9 | **Version 1.0.0**, declared only in `pubspec.yaml`; releases named `BluePulse-v<version>` | 09-11-2026 |
 | D10 | **Updates over the air**: a stable launcher + versioned folders on Windows, APK install on Android | 09-11-2026 |
-| D11 | Releases published to a **public releases-only GitHub repo** (no token in the app) | 09-11-2026 |
+| D11 | Releases published to the **public repo github.com/alishahbaz7/BluePulse** (source + releases; no token in the app) | 09-11-2026 |
 | D13 | Name **BluePulse** — app, launcher, releases (`BluePulse-v<version>`), repo and folder | 09-11-2026 |
 | D12 | Update check **inside the app** on every start; **Later always offered** unless `minimumVersion` requires it | 09-11-2026 |
 
@@ -391,7 +391,7 @@ Tracker (PDF):
 5. Android: the APK is downloaded to the app cache, verified, and handed to the system installer.
 
 Release: bump `pubspec.yaml` + a CHANGELOG section → `dart run tool/package_release.dart --repo
-<owner/repo> --build` → publish `dist/*` as release `v<version>`. Settings live in the user profile,
+--build` → publish `dist/*` as release `v<version>`. Settings live in the user profile,
 so versions share them.
 
 ## 11. Risks

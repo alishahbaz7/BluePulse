@@ -1,9 +1,9 @@
 // Packages a release: the Windows zip (launcher + version folder), the Android APK, and latest.json
 // with SHA-256 checksums and the release notes from CHANGELOG.md.
 //
-//   dart run tool/package_release.dart --repo owner/repo [--build] [--minimum 1.0.2]
+//   dart run tool/package_release.dart [--build] [--minimum 1.0.2]
 //
-//   --repo owner/repo     public releases repository (also compiled into the app with --build)
+//   --repo owner/repo     releases repository (default: UpdateConfig.repo, alishahbaz7/BluePulse)
 //   --build               run `flutter build windows` / `flutter build apk` first
 //   --windows-build DIR   Flutter Windows output (default build/windows/x64/runner/Release)
 //   --android-apk FILE    Flutter APK (default build/app/outputs/flutter-apk/app-release.apk)
@@ -21,12 +21,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:bluepulse/update/update_config.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
-const appName = 'BluePulse';
-const launcherExe = 'BluePulse.exe';
-const installFolder = 'BluePulse';
+// Names come from the app's own release channel definition, so the tool and the app cannot disagree.
+const appName = UpdateConfig.appName;
+const launcherExe = UpdateConfig.launcherExe;
+const installFolder = UpdateConfig.appName;
 const flutterExe = 'bluepulse.exe';
 
 String releaseName(String version) => '$appName-v$version';
@@ -116,25 +118,24 @@ Future<void> main(List<String> argv) async {
     return i >= 0 && i + 1 < argv.length ? argv[i + 1] : null;
   }
 
-  final repo = opt('repo');
+  final String repo = opt('repo') ?? UpdateConfig.repo;
   final minimum = opt('minimum');
   final out = Directory(opt('out') ?? 'dist');
   final winBuild = Directory(opt('windows-build') ?? p.join('build', 'windows', 'x64', 'runner', 'Release'));
   final apk = File(opt('android-apk') ?? p.join('build', 'app', 'outputs', 'flutter-apk', 'app-release.apk'));
   final launcher = File(opt('launcher') ?? p.join('build', 'launcher', launcherExe));
 
-  if (repo != null && !RegExp(r'^[\w.-]+/[\w.-]+$').hasMatch(repo)) {
+  if (!RegExp(r'^[\w.-]+/[\w.-]+$').hasMatch(repo)) {
     stderr.writeln('--repo must be owner/repo');
     exit(64);
   }
   final version = readVersion(File('pubspec.yaml').readAsStringSync());
   final notes = changelogSection(File('CHANGELOG.md').readAsStringSync(), version);
   final name = releaseName(version);
-  stdout.writeln('Packaging $name');
-  if (repo == null) stdout.writeln('  (no --repo: asset URLs are relative and the app has no channel compiled in)');
+  stdout.writeln('Packaging $name for github.com/$repo');
 
   if (argv.contains('--build')) {
-    final define = repo == null ? <String>[] : ['--dart-define=UPDATE_REPO=$repo'];
+    final define = repo == UpdateConfig.repo ? <String>[] : ['--dart-define=UPDATE_REPO=$repo'];
     if (await _run('flutter', ['build', 'windows', '--release', ...define]) != 0) {
       stderr.writeln('Windows build failed (needs Visual Studio "Desktop development with C++" and Developer Mode)');
     }
@@ -188,5 +189,5 @@ Future<void> main(List<String> argv) async {
   ];
   stdout.writeln('\nPublish (needs the GitHub CLI, signed in):');
   stdout.writeln('  gh release create v$version ${files.join(' ')} '
-      '--repo ${repo ?? '<owner/repo>'} --title "BluePulse $version" --notes-file ${p.join(out.path, 'notes.md')}');
+      '--repo $repo --title "BluePulse $version" --notes-file ${p.join(out.path, 'notes.md')}');
 }
