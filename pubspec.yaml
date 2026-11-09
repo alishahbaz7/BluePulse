@@ -8,6 +8,8 @@ environment:
 
 dependencies:
   archive: ^4.6.0
+  bluepulse_ble_windows:
+    path: packages/bluepulse_ble_windows
   crypto: ^3.0.8
   eye_protocol:
     path: packages/eye_protocol

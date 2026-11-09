@@ -13,7 +13,7 @@ Plan v1 · 09-11-2026
 
 | Phase | State |
 |---|---|
-| P0 | **Code-level checks passed** in `universal_ble` 3.2.0: Windows watcher runs in *active* mode (`universal_ble_plugin.cpp:339`), service data (Eddystone `0xFEAA`) is passed through keyed by 128-bit UUID, and `skipDuplicates: false` reports every advertisement. **On-air test with a real BTSID1 still to do** — blocked by the missing Windows and Android toolchains (§12). |
+| P0 | **Done on Windows, 09-11-2026**, with 15–19 real EYE sensors (`MP1_…`, `MG1_…`). It found the gap D5 allowed for: `universal_ble`'s Windows scanner drops repeated advertisements (only a backfill, a scan response or a connectability change gets through — `scan_result_merge.h`), so new sensor values were lost and old ones re-sent. Replaced on Windows by `packages/bluepulse_ble_windows` (every packet, raw bytes). Separately, Windows itself listens 18 ms of every 118 ms (≈15 %) and makes the scan interval/window read-only for apps; the low-latency preset changed nothing on this laptop, so a laptop hears fewer packets than a phone. Android on-air test still to do. |
 | P1 | **Done.** `packages/eye_protocol`: AD parser, Eddystone, iBeacon, Teltonika block, Codec 8 / 8E + CRC, AVL 385 / 10828 / 10829 / 10831, byte inspector. 53 tests; both wiki tracker packets verified (CRC `823F`, `8811`). |
 | P2 | **Built, verified on demo data and tests** (26 app tests): scanners, registry, ADV + scan-response merge, repeats, interval, smoothing, not seen, proximity, distance. Real hardware pending. |
 | P3 | **Built**: shell (rail / top bar / drawer), Overview, Devices, Device detail, Packets, Proximity, Decode, Settings. Checked by screenshot in dark, light, folded rail and phone width (web build, demo data). |
@@ -37,6 +37,9 @@ Plan v1 · 09-11-2026
 | D11 | Releases published to the **public repo github.com/alishahbaz7/BluePulse** (source + releases; no token in the app) | 09-11-2026 |
 | D13 | Name **BluePulse** — app, launcher, releases (`BluePulse-v<version>`), repo and folder | 09-11-2026 |
 | D12 | Update check **inside the app** on every start; **Later always offered** unless `minimumVersion` requires it | 09-11-2026 |
+| D14 | **Own native BLE scanner on Windows** (C++/WinRT plugin in `packages/bluepulse_ble_windows`); `universal_ble` stays for Android and the radio state | 09-11-2026 |
+| D15 | **Device tags** (own names) and **focus** (every packet + fast refresh for chosen devices, slow refresh for the rest, the open device focused while its page is open), kept on the computer | 09-11-2026 |
+| D16 | **Portable on Windows**: unzip and run, no installer, no admin (`asInvoker`), nothing to install on user PCs; keep the folder somewhere the user can write so updates can land | 09-11-2026 |
 
 ## 2. Scope
 

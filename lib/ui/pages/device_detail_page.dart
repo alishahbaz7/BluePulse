@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:eye_protocol/eye_protocol.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/controller.dart';
 import '../../core/device.dart';
+import '../../core/device_book.dart';
 import '../format.dart';
 import '../nav.dart';
 import '../shell.dart';
 import '../theme.dart';
 import '../widgets/charts.dart';
 import '../widgets/common.dart';
+import '../widgets/device_name.dart';
 import '../widgets/inspector.dart';
 import 'devices_page.dart';
 import 'overview_page.dart';
@@ -24,6 +28,37 @@ class DeviceDetailPage extends StatefulWidget {
 
 class _DeviceDetailPageState extends State<DeviceDetailPage> {
   int _windowMinutes = 10;
+  DeviceBook? _book;
+
+  // The open device is in focus for as long as its page is open. Changes are made just after the
+  // current frame: notifying during a build or a teardown is not allowed.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_book == null) {
+      final book = _book = AppScope.read(context).book;
+      final mac = widget.mac;
+      scheduleMicrotask(() => book.setTemporaryFocus(mac));
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant DeviceDetailPage old) {
+    super.didUpdateWidget(old);
+    if (old.mac != widget.mac) {
+      final book = _book, mac = widget.mac;
+      scheduleMicrotask(() => book?.setTemporaryFocus(mac));
+    }
+  }
+
+  @override
+  void dispose() {
+    final book = _book, mac = widget.mac;
+    scheduleMicrotask(() {
+      if (book?.temporaryFocus == mac) book?.setTemporaryFocus(null);
+    });
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,17 +94,43 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     List<ChartPoint> pts(Iterable<Sample> s) => [for (final x in s) ChartPoint(x.time, x.value)];
     final maxGap = Duration(milliseconds: ((d.intervalMs ?? 5000) * 4).clamp(4000, 120000));
 
+    final book = c.book;
+    final tag = book.tagOf(d.mac);
     final header = PanelCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text(d.name ?? 'Unnamed device', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: t.text)),
-          ModelPill(d.model),
-          Pill(notSeen ? 'Not seen' : 'In view', tone: notSeen ? Tone.muted : Tone.ok),
-          ProximityPill(r.proximityOf(d, now)),
-          if (d.lowBattery) const Pill('Low battery', tone: Tone.warn),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text(tag ?? d.name ?? 'Unnamed device',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: t.text)),
+              ModelPill(d.model),
+              Pill(notSeen ? 'Not seen' : 'In view', tone: notSeen ? Tone.muted : Tone.ok),
+              ProximityPill(r.proximityOf(d, now)),
+              if (d.lowBattery) const Pill('Low battery', tone: Tone.warn),
+              const HoldTip(
+                message: 'This device gets every packet and the fastest refresh while its page is open',
+                child: Pill('In focus', tone: Tone.accent),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            OutlinedButton.icon(
+              onPressed: () => showRenameDialog(context, d),
+              icon: const Icon(Icons.edit_outlined, size: 17),
+              label: Text(tag == null ? 'Name' : 'Rename'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => book.toggleFocus(d.mac),
+              icon: Icon(book.pinned(d.mac) ? Icons.check_box_outlined : Icons.check_box_outline_blank,
+                  size: 17, color: book.pinned(d.mac) ? t.accent : null),
+              label: const Text('Keep in focus'),
+            ),
+          ]),
         ]),
         const SizedBox(height: 14),
         Wrap(spacing: 28, runSpacing: 12, children: [
+          if (tag != null) Fact('Advertised name', d.name ?? '—'),
           Fact('MAC', d.mac, mono: true),
           if (id != null && id.isEddystone) ...[
             Fact('Namespace', id.namespaceHex, mono: true),
@@ -104,7 +165,12 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         secondary: d.batteryMv == null ? null : 'mV',
         tone: d.lowBattery ? Tone.warn : Tone.neutral,
       ),
-      StatTile(label: 'Interval', value: formatInterval(d.intervalMs), tip: 'Median gap between advertising events'),
+      StatTile(
+        label: 'Rate',
+        value: d.packetsPerSecond(now).toStringAsFixed(1),
+        secondary: '/s',
+        tip: 'Packets per second over the last 10 seconds; advertising every ${formatInterval(d.intervalMs)}',
+      ),
       StatTile(label: 'Readings', value: formatCount(d.readings), secondary: '${formatCount(d.packets)} packets'),
     ]);
 

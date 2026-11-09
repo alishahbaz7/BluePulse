@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  bluepulse_ble_windows
   universal_ble
 )
 

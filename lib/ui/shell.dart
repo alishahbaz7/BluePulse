@@ -370,6 +370,13 @@ class _TopBar extends StatelessWidget {
             glow: s.scanning,
             detail: s.scanning ? '$count devices this session' : null,
           ),
+        if (c.book.focus.isNotEmpty)
+          StatusChip(
+            text: 'Focus · ${c.book.focus.length}',
+            tone: Tone.accent,
+            detail: 'Devices in focus refresh fastest',
+            onTap: () => Navigation.of(context).go(PageId.devices),
+          ),
       ],
     ];
 

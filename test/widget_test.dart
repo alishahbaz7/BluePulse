@@ -31,6 +31,55 @@ void feed(AppController c) {
 }
 
 void main() {
+  testWidgets('ticking Focus shows the focus bar and the top-bar chip; rows out of focus fade', (tester) async {
+    final c = await pumpApp(tester);
+    feed(c);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Devices').first);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(c.book.focus.length, 1);
+    expect(find.text('1 in focus'), findsOneWidget);
+    expect(find.text('Focus · 1'), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is Opacity && w.opacity < 1), findsWidgets);
+
+    await tester.tap(find.text('Clear focus'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(c.book.focus, isEmpty);
+    expect(find.text('1 in focus'), findsNothing);
+    await finish(tester, c);
+  });
+
+  testWidgets('naming a device shows the name everywhere; its page focuses it while open', (tester) async {
+    final c = await pumpApp(tester);
+    feed(c);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Devices').first);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('ID1_ABCDEFG'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(c.book.temporaryFocus, 'AA:00:00:00:00:01');
+    expect(find.text('In focus'), findsOneWidget);
+
+    await tester.tap(find.text('Name'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Cold room 2');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(c.book.tagOf('AA:00:00:00:00:01'), 'Cold room 2');
+    expect(find.text('Cold room 2'), findsOneWidget, reason: 'the page title is the tag');
+    expect(find.text('ADVERTISED NAME'), findsOneWidget);
+
+    await tester.tap(find.text('All devices'));
+    await tester.pumpAndSettle();
+    expect(c.book.temporaryFocus, isNull, reason: 'leaving the page lets go of the focus');
+    expect(find.textContaining('Cold room 2', findRichText: true), findsOneWidget,
+        reason: 'the list shows the tag, then the advertised name');
+    await finish(tester, c);
+  });
+
   group('navigation definition', () {
     test('every page has a title, a tip and a module', () {
       for (final n in navItems) {

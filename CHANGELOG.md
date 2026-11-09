@@ -13,9 +13,19 @@ about them.
   `0x089A` block (flags, battery `2000 + value × 10` mV, low battery; EYE SENSOR values provisional
   until confirmed against the BTSMP1 page), Codec 8 / 8 Extended with CRC-16/IBM, AVL 385 and
   10828 / 10829 / 10831. Verified against both tracker packets on the BTSID1 wiki page.
-- **Live scanning** through `universal_ble` (active scanning on Windows, so the scan response that
-  carries the battery arrives), advertisement and scan response merged per MAC, repeats folded into
+- **Live scanning on Windows through BluePulse's own native scanner** (`packages/bluepulse_ble_windows`,
+  C++/WinRT): every advertisement and scan response exactly as Windows receives it, raw bytes included.
+  Measured on real EYE sensors, `universal_ble`'s Windows scanner dropped every repeated advertisement
+  with the same fields — the ones carrying new temperature, movement and battery values — and copied
+  the old values into the scan responses it did pass, so readings looked live but stayed frozen.
+  Android keeps `universal_ble`. Advertisement and scan response merged per MAC, repeats folded into
   one reading, RSSI smoothed like the tracker's averaging timeout, *not seen* after three intervals.
+- **Your own names for devices**, kept on this computer and shown everywhere, so a device is easy to
+  find; the Devices list sorts by name by default so it no longer reshuffles with every RSSI change.
+- **Focus**: tick devices to give them every packet and up to ten screen refreshes a second; the rest
+  fade and refresh every 2–10 s depending on how busy the radio is, while still being counted exactly.
+  Opening a device's page focuses it for as long as the page is open. A packets-per-second column
+  makes the received rate visible.
 - **Pages**: Overview, Devices, Device detail with charts, Packets with every byte named, Proximity
   (tracker Near / Away / Lost thresholds), Decode (paste a tracker packet, AVL value or BLE packet),
   Settings. House utility look, dark and light, sidebar on the laptop and a drawer on the phone.

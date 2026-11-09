@@ -8,6 +8,7 @@ import '../nav.dart';
 import '../shell.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/device_name.dart';
 import 'live_state.dart';
 
 class ProximityPage extends StatelessWidget {
@@ -127,7 +128,7 @@ class _DeviceSignal extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
-              child: Text(d.name ?? d.mac,
+              child: Text(deviceLabel(AppScope.of(context).book, d),
                   overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: t.text)),
             ),
             Text(

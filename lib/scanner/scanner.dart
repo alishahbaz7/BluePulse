@@ -8,6 +8,8 @@ class ScanEvent {
     required this.time,
     required this.rssi,
     required this.data,
+    this.raw,
+    this.scanResponse,
   });
 
   /// MAC address, upper case with colons.
@@ -15,6 +17,12 @@ class ScanEvent {
   final DateTime time;
   final int? rssi;
   final AdvertisementData data;
+
+  /// The packet's bytes exactly as received, when the scanner has them (Windows native, demo).
+  final Uint8List? raw;
+
+  /// True for a scan response, false for an advertisement, null when the scanner cannot tell.
+  final bool? scanResponse;
 }
 
 enum RadioState { unknown, on, off, unauthorized, unsupported }

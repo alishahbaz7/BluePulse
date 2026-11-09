@@ -25,6 +25,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.1"
+  bluepulse_ble_windows:
+    dependency: "direct main"
+    description:
+      path: "packages/bluepulse_ble_windows"
+      relative: true
+    source: path
+    version: "0.0.0"
   bluez:
     dependency: transitive
     description:

@@ -257,7 +257,12 @@ class StatTile extends StatelessWidget {
                 ),
                 if (secondary != null) ...[
                   const SizedBox(width: 6),
-                  Text(secondary!, style: TextStyle(fontSize: 13, color: t.dim, fontFeatures: tabular)),
+                  Flexible(
+                    child: Text(secondary!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: t.dim, fontFeatures: tabular)),
+                  ),
                 ],
               ]),
               if (sub != null) ...[

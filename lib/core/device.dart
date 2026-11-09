@@ -87,6 +87,14 @@ class EyeDevice {
   DateTime? _lastReadingAt;
   final _gaps = Ring<int>(24);
 
+  /// When the last packet was fully applied (decoded, charted). Devices out of focus are applied
+  /// only every few seconds; their counters stay exact through [touch].
+  DateTime lastApplied = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Arrival times (ms) of the packets in the last [rateWindow], for [packetsPerSecond].
+  final _recent = ListQueue<int>();
+  static const rateWindow = Duration(seconds: 10);
+
   final rssiHistory = Ring<RssiSample>(3000);
   final batteryHistory = Ring<Sample>(1500);
   final temperatureHistory = Ring<Sample>(1500);
@@ -117,21 +125,27 @@ class EyeDevice {
 
   bool isNotSeen(DateTime now, int minSeconds) => now.difference(lastSeen) > notSeenAfter(minSeconds);
 
-  /// Applies one advertisement or scan response.
-  void apply({
-    required DateTime time,
-    required int? rssi,
-    required AdvertisementData data,
-    required DecodedAdvertisement decoded,
-    required RssiSmoother smoother,
-  }) {
+  /// Packets per second over the last [rateWindow] (or since first seen, if sooner).
+  double packetsPerSecond(DateTime now) {
+    final cutoff = now.millisecondsSinceEpoch - rateWindow.inMilliseconds;
+    while (_recent.isNotEmpty && _recent.first < cutoff) {
+      _recent.removeFirst();
+    }
+    final span = now.difference(firstSeen).inMilliseconds.clamp(1000, rateWindow.inMilliseconds);
+    return _recent.length * 1000 / span;
+  }
+
+  /// Counts a packet without decoding it — for devices out of focus between full updates.
+  void touch(DateTime time) => _count(time);
+
+  void _count(DateTime time) {
     packets++;
     lastSeen = time;
-    merged = merged.merge(data);
-    if (decoded.name != null) name = decoded.name;
-    if (decoded.beaconId != null) beaconId = decoded.beaconId;
-    if (decoded.txPower1m != null) txPower1m = decoded.txPower1m;
-
+    final ms = time.millisecondsSinceEpoch;
+    _recent.addLast(ms);
+    while (_recent.isNotEmpty && _recent.first < ms - rateWindow.inMilliseconds) {
+      _recent.removeFirst();
+    }
     final last = _lastReadingAt;
     final gap = last == null ? null : time.difference(last).inMilliseconds;
     // A negative gap is a clock jump: a new reading, but not a gap worth measuring.
@@ -140,6 +154,22 @@ class EyeDevice {
       _lastReadingAt = time;
       readings++;
     }
+  }
+
+  /// Applies one advertisement or scan response in full.
+  void apply({
+    required DateTime time,
+    required int? rssi,
+    required AdvertisementData data,
+    required DecodedAdvertisement decoded,
+    required RssiSmoother smoother,
+  }) {
+    _count(time);
+    lastApplied = time;
+    merged = merged.merge(data);
+    if (decoded.name != null) name = decoded.name;
+    if (decoded.beaconId != null) beaconId = decoded.beaconId;
+    if (decoded.txPower1m != null) txPower1m = decoded.txPower1m;
 
     if (rssi != null && rssi < 0) {
       this.rssi = rssi;

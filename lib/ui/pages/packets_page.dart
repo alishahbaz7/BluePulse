@@ -1,4 +1,3 @@
-import 'package:eye_protocol/eye_protocol.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/controller.dart';
@@ -7,6 +6,7 @@ import '../format.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/data_grid.dart';
+import '../widgets/device_name.dart';
 import '../widgets/inspector.dart';
 import 'live_state.dart';
 
@@ -51,6 +51,15 @@ class _PacketsPageState extends State<PacketsPage> {
         columns: [
           GridColumn(label: 'Time', width: 112, cell: (ctx, p) => Text(formatClockMs(p.time), style: monoStyle(ctx, size: 12))),
           GridColumn(label: 'MAC', width: 150, cell: (ctx, p) => Text(p.mac, style: monoStyle(ctx, size: 12))),
+          GridColumn(
+            label: 'Name',
+            width: 150,
+            cell: (_, p) {
+              final d = c.registry.device(p.mac);
+              return Text(d == null ? (p.data.name ?? '—') : deviceLabel(c.book, d));
+            },
+          ),
+          GridColumn(label: 'Kind', width: 120, cell: (_, p) => Text(p.kind)),
           GridColumn(label: 'RSSI', width: 64, numeric: true, cell: (_, p) => Text(p.rssi?.toString() ?? '—')),
           GridColumn(label: 'Carries', width: 260, fill: true, cell: (_, p) => Text(p.summary)),
         ],
@@ -59,7 +68,7 @@ class _PacketsPageState extends State<PacketsPage> {
 
     final inspector = PanelCard(
       title: 'Bytes',
-      tip: 'Rebuilt from the fields the platform reported; every byte named',
+      tip: 'Every byte named — as received when the scanner provides raw bytes, otherwise rebuilt from the parsed fields',
       expand: true,
       child: selected == null
           ? const EmptyState(text: 'No packet selected.')
@@ -68,7 +77,7 @@ class _PacketsPageState extends State<PacketsPage> {
                 Text('${selected.mac} · ${formatClockMs(selected.time)} · ${selected.rssi ?? '—'} dBm',
                     style: monoStyle(context, size: 12.5, color: context.tokens.dim)),
                 const SizedBox(height: 10),
-                PacketInspector(packet: annotateStructures(selected.data.toStructures())),
+                PacketInspector(packet: selected.annotated),
               ]),
             ),
     );

@@ -194,7 +194,7 @@ class DemoScanner implements BeaconScanner {
       final rsp = _scanResponse(d);
       if (rsp != null) {
         final later = now.add(const Duration(milliseconds: 12));
-        _emit(d, later, rssi + _rng.nextInt(3) - 1, rsp);
+        _emit(d, later, rssi + _rng.nextInt(3) - 1, rsp, scanResponse: true);
       }
     }
   }
@@ -211,13 +211,15 @@ class DemoScanner implements BeaconScanner {
     if (_rng.nextDouble() < 0.03) d.magnet = !d.magnet;
   }
 
-  void _emit(_DemoDevice d, DateTime time, int rssi, Uint8List raw) {
+  void _emit(_DemoDevice d, DateTime time, int rssi, Uint8List raw, {bool scanResponse = false}) {
     if (_events.isClosed) return;
     _events.add(ScanEvent(
       deviceId: d.mac,
       time: time,
       rssi: rssi,
       data: AdvertisementData.parse(raw),
+      raw: raw,
+      scanResponse: scanResponse,
     ));
   }
 

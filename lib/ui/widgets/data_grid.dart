@@ -45,12 +45,16 @@ class DataGrid<T> extends StatefulWidget {
     this.initialAscending = true,
     this.rowHeight = 34,
     this.shrinkWrap = false,
+    this.dimmed,
   });
 
   final List<T> rows;
   final List<GridColumn<T>> columns;
   final void Function(T row)? onTap;
   final bool Function(T row)? selected;
+
+  /// Rows drawn faded (devices out of focus).
+  final bool Function(T row)? dimmed;
   final int? initialSort;
   final bool initialAscending;
   final double rowHeight;
@@ -135,7 +139,9 @@ class _DataGridState<T> extends State<DataGrid<T>> {
             hoverColor: t.text.withValues(alpha: 0.04),
             child: SizedBox(
               height: widget.rowHeight,
-              child: Row(children: [
+              child: Opacity(
+                opacity: (widget.dimmed?.call(row) ?? false) ? 0.42 : 1,
+                child: Row(children: [
                 for (var j = 0; j < widget.columns.length; j++)
                   SizedBox(
                     width: widths[j],
@@ -156,7 +162,8 @@ class _DataGridState<T> extends State<DataGrid<T>> {
                       ),
                     ),
                   ),
-              ]),
+                ]),
+              ),
             ),
           ),
         );

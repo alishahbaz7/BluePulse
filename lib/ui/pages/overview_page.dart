@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../widgets/charts.dart';
 import '../widgets/common.dart';
 import '../widgets/data_grid.dart';
+import '../widgets/device_name.dart';
 import 'devices_page.dart';
 import 'live_state.dart';
 
@@ -89,7 +90,7 @@ class OverviewPage extends StatelessWidget {
           shrinkWrap: true,
           onTap: (d) => go(PageId.deviceDetail, mac: d.mac),
           columns: [
-            GridColumn(label: 'Name', width: 150, cell: (_, d) => Text(d.name ?? '—')),
+            GridColumn(label: 'Name', width: 190, cell: (_, d) => DeviceName(d)),
             GridColumn(label: 'MAC', width: 150, cell: (ctx, d) => Text(d.mac, style: monoStyle(ctx))),
             GridColumn(label: 'Model', width: 130, cell: (_, d) => ModelPill(d.model)),
             GridColumn(
@@ -127,12 +128,13 @@ class _Attention extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final go = Navigation.of(context).go;
+    final book = AppScope.of(context).book;
     final rows = <Widget>[
       for (final d in low)
-        _row(context, Icons.battery_alert_outlined, d.name ?? d.mac, '${d.batteryMv ?? '—'} mV', t.warn,
+        _row(context, Icons.battery_alert_outlined, deviceLabel(book, d), '${d.batteryMv ?? '—'} mV', t.warn,
             () => go(PageId.deviceDetail, mac: d.mac)),
       for (final d in notSeen)
-        _row(context, Icons.visibility_off_outlined, d.name ?? d.mac, formatAgo(d.lastSeen, now), t.muted,
+        _row(context, Icons.visibility_off_outlined, deviceLabel(book, d), formatAgo(d.lastSeen, now), t.muted,
             () => go(PageId.deviceDetail, mac: d.mac)),
     ];
     return PanelCard(

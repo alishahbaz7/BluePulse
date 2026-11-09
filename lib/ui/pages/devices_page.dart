@@ -8,6 +8,7 @@ import '../shell.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/data_grid.dart';
+import '../widgets/device_name.dart';
 import 'live_state.dart';
 import 'overview_page.dart';
 
@@ -41,13 +42,38 @@ class _DevicesPageState extends State<DevicesPage> {
           _Filter.low => d.lowBattery,
           _Filter.notSeen => notSeen(d),
         };
+    final book = c.book;
     final q = _query.trim().toLowerCase();
-    final rows = all.where((d) => matches(d, _filter) && (q.isEmpty || d.searchText.contains(q))).toList();
+    bool found(EyeDevice d) =>
+        q.isEmpty || d.searchText.contains(q) || (book.tagOf(d.mac)?.toLowerCase().contains(q) ?? false);
+    final rows = all.where((d) => matches(d, _filter) && found(d)).toList();
     final anySensor = rows.any((d) => d.model == DeviceModel.eyeSensor);
     final go = Navigation.of(context).go;
+    final pinned = all.where((d) => book.pinned(d.mac)).length;
 
     final columns = <GridColumn<EyeDevice>>[
-      GridColumn(label: 'Name', width: 140, sortValue: (d) => d.name?.toLowerCase(), cell: (_, d) => Text(d.name ?? '—')),
+      GridColumn(
+        label: 'Focus',
+        width: 64,
+        sortValue: (d) => book.pinned(d.mac) ? 0 : 1,
+        tip: 'Devices in focus get every packet and the fastest refresh; the rest refresh every few seconds',
+        cell: (_, d) => SizedBox(
+          height: 24,
+          child: Checkbox(
+            value: book.pinned(d.mac),
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: (_) => book.toggleFocus(d.mac),
+          ),
+        ),
+      ),
+      GridColumn(
+        label: 'Name',
+        width: 190,
+        sortValue: (d) => deviceLabel(book, d).toLowerCase(),
+        tip: 'Your own name for the device first, then the name it advertises',
+        cell: (_, d) => DeviceName(d),
+      ),
       GridColumn(label: 'MAC', width: 146, sortValue: (d) => d.mac, cell: (ctx, d) => Text(d.mac, style: monoStyle(ctx))),
       GridColumn(label: 'Model', width: 120, sortValue: (d) => d.model.index, cell: (_, d) => ModelPill(d.model)),
       GridColumn(
@@ -63,6 +89,14 @@ class _DevicesPageState extends State<DevicesPage> {
         width: 100,
         sortValue: (d) => r.proximityOf(d, now).index,
         cell: (_, d) => ProximityPill(r.proximityOf(d, now)),
+      ),
+      GridColumn(
+        label: 'Rate',
+        width: 78,
+        numeric: true,
+        sortValue: (d) => d.packetsPerSecond(now),
+        tip: 'Packets per second received from the device over the last 10 seconds',
+        cell: (_, d) => Text('${d.packetsPerSecond(now).toStringAsFixed(1)}/s'),
       ),
       GridColumn(
         label: 'Battery',
@@ -191,6 +225,7 @@ class _DevicesPageState extends State<DevicesPage> {
             ),
           ),
         ]),
+        if (pinned > 0) ...[const SizedBox(height: 10), _FocusBar(count: pinned, interval: r.backgroundInterval(now))],
         const SizedBox(height: 12),
         Expanded(
           child: PanelCard(
@@ -203,12 +238,48 @@ class _DevicesPageState extends State<DevicesPage> {
                 : DataGrid<EyeDevice>(
                     rows: rows,
                     columns: columns,
-                    initialSort: 3,
-                    initialAscending: false,
+                    // By name: a list that stays put. Click a header for signal, rate and the rest.
+                    initialSort: 1,
+                    initialAscending: true,
+                    dimmed: (d) => book.focusActive && !book.inFocus(d.mac),
+                    selected: (d) => book.pinned(d.mac),
                     onTap: (d) => go(PageId.deviceDetail, mac: d.mac),
                   ),
           ),
         ),
+      ]),
+    );
+  }
+}
+
+/// Shown while devices are in focus: how many, how often the rest refresh, and the way out.
+class _FocusBar extends StatelessWidget {
+  const _FocusBar({required this.count, required this.interval});
+
+  final int count;
+  final Duration interval;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(t.accentSoft, t.panel),
+        border: Border.all(color: t.accent.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(children: [
+        Icon(Icons.center_focus_strong_outlined, size: 18, color: t.accent),
+        const SizedBox(width: 10),
+        Text('$count in focus', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.text)),
+        const SizedBox(width: 12),
+        HoldTip(
+          message: 'Devices out of focus are counted in full but redrawn less often; busier radios mean longer gaps',
+          child: Text('others every ${formatDuration(interval)}', style: TextStyle(fontSize: 12.5, color: t.dim)),
+        ),
+        const Spacer(),
+        TextButton(onPressed: AppScope.read(context).book.clearFocus, child: const Text('Clear focus')),
       ]),
     );
   }

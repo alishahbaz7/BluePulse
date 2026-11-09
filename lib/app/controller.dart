@@ -5,10 +5,12 @@ import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/device_book.dart';
 import '../core/registry.dart';
 import '../scanner/demo_scanner.dart';
 import '../scanner/scanner.dart';
 import '../scanner/universal_ble_scanner.dart';
+import '../scanner/windows_ble_scanner.dart';
 import '../update/semver.dart';
 import '../update/transport.dart';
 import '../update/update_config.dart';
@@ -36,8 +38,9 @@ class AppController extends ChangeNotifier {
         updates = updates ?? UpdateService.disabled() {
     this.updates.addListener(notifyListeners);
     settings.addListener(_onSettings);
-    // Pages depend on the controller alone, so registry updates reach them through it.
+    // Pages depend on the controller alone, so registry and device-book updates reach them through it.
     registry.addListener(notifyListeners);
+    registry.book.addListener(notifyListeners);
     _source = settings.scanSource;
     scanner.status.addListener(notifyListeners);
   }
@@ -60,8 +63,10 @@ class AppController extends ChangeNotifier {
       version: version,
       updates: _updateService(version),
       settings: settings,
-      registry: DeviceRegistry(settings),
-      liveScanner: liveScanSupported ? UniversalBleScanner() : null,
+      registry: DeviceRegistry(settings, book: DeviceBook(prefs)),
+      liveScanner: !liveScanSupported
+          ? null
+          : (defaultTargetPlatform == TargetPlatform.windows ? WindowsBleScanner() : UniversalBleScanner()),
       demoScanner: DemoScanner(),
     );
     unawaited(c.scanner.init());
@@ -86,6 +91,9 @@ class AppController extends ChangeNotifier {
 
   final AppSettings settings;
   final DeviceRegistry registry;
+
+  /// Tags and focus, kept on this computer.
+  DeviceBook get book => registry.book;
 
   /// The app version, as the build reports it — pubspec.yaml is its only declaration.
   final String version;
@@ -138,6 +146,7 @@ class AppController extends ChangeNotifier {
   void dispose() {
     settings.removeListener(_onSettings);
     registry.removeListener(notifyListeners);
+    registry.book.removeListener(notifyListeners);
     updates.removeListener(notifyListeners);
     updates.dispose();
     scanner.status.removeListener(notifyListeners);
