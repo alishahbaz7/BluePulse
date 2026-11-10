@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:eye_protocol/eye_protocol.dart';
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import '../app/settings.dart';
 import '../scanner/scanner.dart';
 import 'device.dart';
 import 'device_book.dart';
+import 'rx_log.dart';
 import 'signal.dart';
 
 /// One packet as received, for the Packets page.
@@ -143,10 +145,16 @@ class DeviceRegistry extends ChangeNotifier {
       final second = e.time.millisecondsSinceEpoch ~/ 1000;
       _perSecond[second] = (_perSecond[second] ?? 0) + 1;
       if (_perSecond.length > 30) _perSecond.removeWhere((k, _) => k < second - 15);
-      // Out of focus and updated recently: count it, skip the decoding and the charts.
-      if (!fast && e.time.difference(d.lastApplied) < backgroundInterval(e.time)) {
+      // Out of focus and updated recently: count it and log it, skip the decoding and the charts.
+      // The whole advertising event is applied when its turn comes — a scan response follows its
+      // advertisement by a few ms and may carry the name and the Teltonika data (EYE BEACON in
+      // Eddystone mode), so it must not be skipped in favour of the advertisement.
+      final since = e.time.difference(d.appliedEventStart);
+      final sameEvent = since.inMilliseconds >= 0 && since.inMilliseconds <= eventSpanMs;
+      if (!fast && !sameEvent && since < backgroundInterval(e.time)) {
         final readingsBefore = d.readings;
         d.touch(e.time);
+        _keep(d, e);
         _countReading(d, readingsBefore, e.time);
         _schedule(fast: false);
         return;
@@ -165,11 +173,41 @@ class DeviceRegistry extends ChangeNotifier {
     final smoother = _smoothers.putIfAbsent(e.deviceId, () => RssiSmoother(settings.averagingSeconds))
       ..timeoutSeconds = settings.averagingSeconds;
     final readingsBefore = d.readings;
+    final sinceEvent = e.time.difference(d.appliedEventStart).inMilliseconds;
+    if (sinceEvent < 0 || sinceEvent > eventSpanMs) d.appliedEventStart = e.time;
     d.apply(time: e.time, rssi: e.rssi, data: e.data, decoded: decoded, smoother: smoother);
+    _keep(d, e);
     _countReading(d, readingsBefore, e.time);
     packets.add(PacketEntry(++_seq, e.time, e.deviceId, e.rssi, e.data, decoded,
         raw: e.raw, scanResponse: e.scanResponse));
     _schedule(fast: fast);
+  }
+
+  /// Every packet goes into its device's log, and into the device's recording if one is running.
+  void _keep(EyeDevice d, ScanEvent e) {
+    final entry = d.recordRx(e);
+    _recorders[d.mac]?.write(entry);
+  }
+
+  // Recording a device's packets to a CSV file while they arrive.
+  final _recorders = <String, RxRecorder>{};
+
+  RxRecorder? recorder(String mac) => _recorders[mac];
+
+  Future<RxRecorder> startRecording(EyeDevice d, File file) async {
+    await _recorders.remove(d.mac)?.stop();
+    final r = await RxRecorder.start(file, mac: d.mac, name: d.name, tag: book.tagOf(d.mac));
+    _recorders[d.mac] = r;
+    notifyListeners();
+    return r;
+  }
+
+  Future<File?> stopRecording(String mac) async {
+    final r = _recorders.remove(mac);
+    if (r == null) return null;
+    final f = await r.stop();
+    if (!_disposed) notifyListeners();
+    return f;
   }
 
   void _countReading(EyeDevice d, int readingsBefore, DateTime time) {
@@ -215,6 +253,10 @@ class DeviceRegistry extends ChangeNotifier {
 
   @override
   void dispose() {
+    for (final r in _recorders.values) {
+      r.stop();
+    }
+    _recorders.clear();
     _disposed = true;
     _tick?.cancel();
     _pending?.cancel();

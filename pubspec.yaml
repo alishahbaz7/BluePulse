@@ -11,14 +11,17 @@ dependencies:
   bluepulse_ble_windows:
     path: packages/bluepulse_ble_windows
   crypto: ^3.0.8
+  device_info_plus: ^13.3.0
   eye_protocol:
     path: packages/eye_protocol
+  file_selector: ^1.1.0
   flutter:
     sdk: flutter
   open_filex: ^5.0.0
   package_info_plus: ^10.2.2
   path: ^1.9.1
   path_provider: ^2.1.6
+  share_plus: ^13.3.1
   shared_preferences: ^2.5.6
   universal_ble: ^3.2.0
 

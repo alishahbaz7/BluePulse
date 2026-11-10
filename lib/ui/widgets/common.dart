@@ -241,12 +241,11 @@ class StatTile extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(label.toUpperCase(), style: labelStyle(context), maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 6),
-              Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                Flexible(
-                  child: Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+              // Value and its unit as one line: when space runs out, the unit is cut first, never the figure.
+              Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                    text: value,
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w600,
@@ -254,17 +253,15 @@ class StatTile extends StatelessWidget {
                       fontFeatures: tabular,
                     ),
                   ),
-                ),
-                if (secondary != null) ...[
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(secondary!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 13, color: t.dim, fontFeatures: tabular)),
-                  ),
-                ],
-              ]),
+                  if (secondary != null)
+                    TextSpan(
+                      text: '  ${secondary!}',
+                      style: TextStyle(fontSize: 13, color: t.dim, fontFeatures: tabular),
+                    ),
+                ]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               if (sub != null) ...[
                 const SizedBox(height: 3),
                 Text(sub!, style: TextStyle(fontSize: 12, color: t.dim), maxLines: 1, overflow: TextOverflow.ellipsis),

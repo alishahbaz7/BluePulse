@@ -50,6 +50,15 @@ String formatInterval(int? ms) {
   return s == s.roundToDouble() ? '${s.round()} s' : '${s.toStringAsFixed(1)} s';
 }
 
+/// A gap between pings: "850 ms", "4.98 s", "1 min 5 s".
+String formatGap(Duration? d) {
+  if (d == null) return '—';
+  final ms = d.inMilliseconds;
+  if (ms < 1000) return '$ms ms';
+  if (ms < 60000) return '${(ms / 1000).toStringAsFixed(2)} s';
+  return formatDuration(d);
+}
+
 String formatDistance(double? m) {
   if (m == null) return '—';
   if (m < 10) return '≈ ${m.toStringAsFixed(1)} m';

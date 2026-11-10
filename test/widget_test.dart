@@ -69,7 +69,7 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(c.book.tagOf('AA:00:00:00:00:01'), 'Cold room 2');
-    expect(find.text('Cold room 2'), findsOneWidget, reason: 'the page title is the tag');
+    expect(find.text('Cold room 2'), findsNWidgets(2), reason: 'the page title and the pinned bar show the tag');
     expect(find.text('ADVERTISED NAME'), findsOneWidget);
 
     await tester.tap(find.text('All devices'));
@@ -77,6 +77,59 @@ void main() {
     expect(c.book.temporaryFocus, isNull, reason: 'leaving the page lets go of the focus');
     expect(find.textContaining('Cold room 2', findRichText: true), findsOneWidget,
         reason: 'the list shows the tag, then the advertised name');
+    await finish(tester, c);
+  });
+
+  testWidgets('device page: one window for everything, pings, chart stats, arrange, received packets', (tester) async {
+    final c = await pumpApp(tester, size: const Size(1440, 1400));
+    final now = DateTime.now();
+    for (var i = 0; i < 8; i++) {
+      final at = now.subtract(Duration(seconds: 5 * (8 - i)));
+      c.registry
+        ..ingest(event('AA:00:00:00:00:01', beaconAdv, rssi: -58 - i, at: at))
+        ..ingest(event('AA:00:00:00:00:01', beaconRsp, rssi: -59 - i, at: at.add(const Duration(milliseconds: 12))));
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Devices').first);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('ID1_ABCDEFG'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The window.
+    expect(find.text('10 min'), findsOneWidget);
+    await tester.tap(find.text('5 min'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(c.book.windowMinutes, 5);
+
+    // Pings: 8 advertising events, 5 s apart.
+    expect(find.text('PINGS'), findsOneWidget);
+    expect(find.text('8 in 5 min'), findsOneWidget);
+    expect(find.text('5.00 s'), findsWidgets, reason: 'avg / min / max gap');
+
+    // Every chart: Now · Avg · Min · Max.
+    expect(find.text('AVG'), findsWidgets);
+    expect(find.text('MIN'), findsWidgets);
+    expect(find.text('MAX'), findsWidgets);
+
+    // Arrange.
+    await tester.tap(find.text('Arrange'));
+    await tester.pumpAndSettle();
+    expect(find.text('Arrange charts'), findsOneWidget);
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    expect(c.book.chartLayout('eyeBeacon').first.visible, isFalse, reason: 'Signal hidden');
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    // Received packets.
+    final scrollable = find.byType(Scrollable).evaluate().map((e) => e.widget).whereType<Scrollable>().length;
+    expect(scrollable, greaterThan(0));
+    await tester.scrollUntilVisible(find.text('Received packets'), 400,
+        scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first);
+    expect(find.text('Received packets'), findsOneWidget);
+    expect(find.text('16 in 5 min'), findsOneWidget, reason: '8 advertisements + 8 scan responses');
+    expect(find.text('Save log'), findsOneWidget);
+    expect(find.text('Record'), findsOneWidget);
     await finish(tester, c);
   });
 
@@ -164,7 +217,7 @@ void main() {
     );
     await tester.pump();
     expect(find.text('Codec 8 Extended'), findsOneWidget);
-    expect(find.text('OK'), findsOneWidget);
+    expect(find.text('OK  0x823F'), findsOneWidget, reason: 'CRC tile: the result with the checksum beside it');
     expect(find.text('AVL 10831 · EYE beacons · Lost'), findsOneWidget);
     expect(find.text('3030 mV'), findsOneWidget);
     expect(find.text('-92 dBm'), findsOneWidget);

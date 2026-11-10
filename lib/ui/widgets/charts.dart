@@ -20,6 +20,7 @@ class ChartSeries {
     this.dots = false,
     this.unit = '',
     this.decimals = 0,
+    this.showStats = true,
   });
 
   final String label;
@@ -29,6 +30,37 @@ class ChartSeries {
   final bool dots;
   final String unit;
   final int decimals;
+
+  /// Now · Avg · Min · Max over the window in the key; otherwise just the latest value.
+  final bool showStats;
+}
+
+/// Now, average, minimum and maximum of the points inside a window.
+class SeriesStats {
+  const SeriesStats({required this.now, required this.avg, required this.min, required this.max, required this.count});
+
+  final double now;
+  final double avg;
+  final double min;
+  final double max;
+  final int count;
+
+  static SeriesStats? of(List<ChartPoint> points, DateTime start, DateTime end) {
+    var n = 0;
+    var sum = 0.0;
+    var lo = double.infinity, hi = -double.infinity;
+    double? last;
+    for (final p in points) {
+      if (p.time.isBefore(start) || p.time.isAfter(end)) continue;
+      n++;
+      sum += p.value;
+      if (p.value < lo) lo = p.value;
+      if (p.value > hi) hi = p.value;
+      last = p.value;
+    }
+    if (n == 0 || last == null) return null;
+    return SeriesStats(now: last, avg: sum / n, min: lo, max: hi, count: n);
+  }
 }
 
 /// A horizontal band behind the lines (proximity zones).
@@ -71,21 +103,39 @@ class TimeChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    final start = end.subtract(window);
+    final value = TextStyle(fontSize: 12.5, color: t.text, fontWeight: FontWeight.w600, fontFeatures: tabular);
+    final key = TextStyle(fontSize: 11.5, color: t.muted, fontWeight: FontWeight.w600, letterSpacing: 0.4);
+
+    Widget figure(String label, double v, ChartSeries s) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(label, style: key),
+          const SizedBox(width: 4),
+          Text('${v.toStringAsFixed(s.decimals)}${s.unit}', style: value),
+        ]);
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Wrap(spacing: 16, runSpacing: 4, children: [
+      Wrap(spacing: 18, runSpacing: 6, children: [
         for (final s in series)
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 14, height: 3, color: s.color),
-            const SizedBox(width: 6),
-            Text(s.label, style: TextStyle(fontSize: 12, color: t.dim)),
-            if (s.points.isNotEmpty) ...[
-              const SizedBox(width: 6),
-              Text(
-                '${s.points.last.value.toStringAsFixed(s.decimals)}${s.unit}',
-                style: TextStyle(fontSize: 12, color: t.text, fontWeight: FontWeight.w600, fontFeatures: tabular),
-              ),
-            ],
-          ]),
+          Builder(builder: (context) {
+            final stats = SeriesStats.of(s.points, start, end);
+            return Wrap(spacing: 12, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(width: 14, height: 3, color: s.color),
+                const SizedBox(width: 6),
+                Text(s.label, style: TextStyle(fontSize: 12, color: t.dim)),
+              ]),
+              if (stats == null)
+                Text('—', style: value)
+              else if (!s.showStats)
+                figure('NOW', stats.now, s)
+              else ...[
+                figure('NOW', stats.now, s),
+                figure('AVG', stats.avg, s),
+                figure('MIN', stats.min, s),
+                figure('MAX', stats.max, s),
+              ],
+            ]);
+          }),
       ]),
       const SizedBox(height: 8),
       SizedBox(

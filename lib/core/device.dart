@@ -2,7 +2,11 @@ import 'dart:collection';
 
 import 'package:eye_protocol/eye_protocol.dart';
 
+import '../scanner/scanner.dart';
+import 'rx_log.dart';
 import 'signal.dart';
+
+export 'rx_log.dart' show RxEntry;
 
 enum DeviceModel { eyeBeacon, eyeSensor, eyeDevice, otherBeacon }
 
@@ -59,6 +63,10 @@ class Ring<T> extends IterableBase<T> {
 /// scan response, or a burst of repeats).
 const readingGapMs = 600;
 
+/// An advertisement and its scan response arrive within a few ms of each other; packets this close
+/// to the start of an applied event belong to it.
+const eventSpanMs = 80;
+
 /// Everything known about one device in this session.
 class EyeDevice {
   EyeDevice(this.mac, {required this.firstSeen}) : lastSeen = firstSeen;
@@ -85,11 +93,22 @@ class EyeDevice {
   int readings = 0;
 
   DateTime? _lastReadingAt;
-  final _gaps = Ring<int>(24);
+  final _gaps = Ring<int>(500);
+
+  /// When each ping (advertising event: advertisement + its scan response, repeats folded) arrived.
+  final pingTimes = Ring<DateTime>(5000);
+
+  /// The last packets received from this device, every one — also for devices out of focus.
+  final rx = Ring<RxEntry>(5000);
+  DateTime? _lastPacketAt;
 
   /// When the last packet was fully applied (decoded, charted). Devices out of focus are applied
   /// only every few seconds; their counters stay exact through [touch].
   DateTime lastApplied = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Start of the advertising event last applied: the packets within [eventSpanMs] of it (the
+  /// advertisement and its scan response) are applied together.
+  DateTime appliedEventStart = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// Arrival times (ms) of the packets in the last [rateWindow], for [packetsPerSecond].
   final _recent = ListQueue<int>();
@@ -110,8 +129,31 @@ class EyeDevice {
     return DeviceModel.otherBeacon;
   }
 
-  /// Median gap between advertising events, ms.
-  int? get intervalMs => median(_gaps.toList());
+  /// Median gap between recent advertising events, ms.
+  int? get intervalMs {
+    final g = _gaps.toList();
+    return median(g.length > 50 ? g.sublist(g.length - 50) : g);
+  }
+
+  /// Gaps between pings, ms, oldest first (up to the last 500) — for estimating the advertising
+  /// interval, which the shortest common gap reveals even when pings are missed.
+  List<int> get pingGapsMs => _gaps.toList();
+
+  /// Keeps the packet in [rx] with the gap since the previous packet from this device.
+  RxEntry recordRx(ScanEvent e) {
+    final last = _lastPacketAt;
+    _lastPacketAt = e.time;
+    final entry = RxEntry(
+      time: e.time,
+      rssi: e.rssi,
+      scanResponse: e.scanResponse,
+      data: e.data,
+      raw: e.raw,
+      gapMs: last == null ? null : e.time.difference(last).inMilliseconds,
+    );
+    rx.add(entry);
+    return entry;
+  }
 
   int? get batteryMv => teltonika?.batteryMv;
   bool get lowBattery => teltonika?.lowBattery ?? false;
@@ -153,6 +195,7 @@ class EyeDevice {
       if (gap != null && gap > 0) _gaps.add(gap);
       _lastReadingAt = time;
       readings++;
+      pingTimes.add(time);
     }
   }
 

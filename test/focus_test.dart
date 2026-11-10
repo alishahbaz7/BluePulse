@@ -58,6 +58,21 @@ void main() {
     expect(r.totalPackets, lessThan(70), reason: 'only applied packets are logged');
   });
 
+  test('out of focus, a scan response carrying the data is applied with its advertisement', () {
+    // EYE BEACON in Eddystone mode: the advertisement has the ID, the scan response 12 ms later has
+    // the name and the battery. Another device is in focus, so this one refreshes slowly.
+    book.toggleFocus(b);
+    for (var i = 0; i < 6; i++) {
+      final at = t0.add(Duration(seconds: 5 * i));
+      r.ingest(event(a, beaconAdv, at: at));
+      r.ingest(event(a, beaconRsp, at: at.add(const Duration(milliseconds: 12))));
+    }
+    final d = r.device(a)!;
+    expect(d.name, 'ID1_ABCDEFG');
+    expect(d.batteryMv, 2990);
+    expect(r.devices.map((x) => x.mac), contains(a), reason: 'recognised as an EYE device, so listed');
+  });
+
   test('the newest values arrive for a device in focus (no stale repeats)', () {
     book.toggleFocus(a);
     feed(1);
