@@ -14,6 +14,7 @@ import 'pages/overview_page.dart';
 import 'pages/packets_page.dart';
 import 'pages/proximity_page.dart';
 import 'pages/sessions_page.dart';
+import 'pages/simulator_page.dart';
 import 'pages/settings_page.dart';
 import 'theme.dart';
 import 'update_ui.dart';
@@ -111,6 +112,7 @@ class _ShellState extends State<Shell> {
         PageId.proximity => const ProximityPage(),
         PageId.decode => DecodePage(initialHex: widget.initialHex),
         PageId.settings => const SettingsPage(),
+        PageId.simulator => const SimulatorPage(),
         PageId.sessions => const SessionsPage(),
         PageId.configure => const SizedBox.shrink(),
       };

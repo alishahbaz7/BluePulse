@@ -65,7 +65,7 @@ ScanEvent event(String mac, String hex, {int rssi = -60, DateTime? at}) => ScanE
 const beaconAdv = '02 01 06 03 03 AA FE 17 16 AA FE 00 EE E39B606AA38255AA8E46 0B154E2D0055 00 00';
 const beaconRsp = '0C 09 4944315F41424344454647 06 FF 9A 08 01 80 63';
 
-/// EYE SENSOR scan response with every value (provisional layout).
+/// EYE SENSOR scan response with every value.
 const sensorRsp = '0B 09 534E535F544553543031 0E FF 9A 08 01 BF 08 B4 2D 80 0C F6 00 5A 64';
 
 /// A third-party iBeacon.

@@ -26,7 +26,7 @@ const _examples = <(String, String)>[
   ),
   ('AVL 385, 2 iBeacons · wiki', '11216B817F8A274D4FBDB62D33E1842F8DF8014D022BBF21A579723675064DC396A7C3520129F61900000000BF'),
   ('BTSID1 scan response', '0C094944315F41424344454647 06FF9A08018063'),
-  ('EYE SENSOR block · provisional layout', '01BF08B42D800CF6005A64'),
+  ('EYE SENSOR block', '01BF08B42D800CF6005A64'),
 ];
 
 class DecodePage extends StatefulWidget {

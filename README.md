@@ -5,33 +5,54 @@ Bluetooth and BLE workbench for Windows and Android, in Flutter. First module: T
 for the beacon records Teltonika trackers send (Codec 8 / 8 Extended). Next: a BLE / Bluetooth Classic
 serial terminal.
 
-The plan, protocol reference, decisions and test cases are in [PLAN.md](PLAN.md). The protocol source
-is the BTSID1 wiki page saved as PDF in this folder.
+The plan, protocol reference, decisions and test cases are in [PLAN.md](PLAN.md). The protocol sources
+are the Teltonika wiki pages saved as PDF in this folder (BTSID1, BTSMP1, and the MESH pages).
 
 ## Layout
 
 ```
-packages/eye_protocol/   pure-Dart decoders (no Flutter) + tests
+packages/eye_protocol/   pure-Dart decoders and encoders (no Flutter) + tests
   lib/src/teltonika.dart    0x089A block: flags + values
   lib/src/eddystone.dart    Eddystone-UID
   lib/src/ibeacon.dart      iBeacon
+  lib/src/encode.dart       the inverse: Teltonika block, Eddystone-UID, iBeacon (for the simulator)
   lib/src/advertisement.dart  AD structures → fields, merge, rebuild
   lib/src/inspect.dart      byte-by-byte labels for the packet inspector
   lib/src/codec8e.dart      Codec 8 / 8E framing + CRC-16/IBM
   lib/src/avl_beacons.dart  AVL 385 and 10828 / 10829 / 10831
+packages/bluepulse_ble_windows/  Windows BLE (C++/WinRT): the scanner (every packet, raw) and the
+                                 transmitter (a publisher per burst)
+packages/bluepulse_ble_android/  Android BLE transmitter (Java, AdvertisingSet): exact interval, power, name
 lib/
-  app/        settings (persisted), controller (scanner ↔ registry), AppScope
+  app/        settings (persisted), controller (scanner ↔ registry), file folders, AppScope
   scanner/    BeaconScanner · WindowsBleScanner (live, Windows) · UniversalBleScanner (live,
               Android) · DemoScanner (simulated)
   core/       DeviceRegistry, EyeDevice, DeviceBook (names, focus, chart layout), ping stats,
-              received-packet log, RSSI smoothing, proximity, distance
-packages/bluepulse_ble_windows/  BluePulse's own Windows BLE scanner (C++/WinRT): every packet, raw
+              received-packet log, sessions, RSSI smoothing, proximity, distance
+  simulator/  what to transmit (profiles, values that change by themselves), the per-platform
+              advertiser, and the service that runs a simulation
   ui/         theme tokens, nav definition, shell (rail + top bar), pages, widgets
   update/     release channel: check, download, verify, install
   usage/      usage reports (who uses it and how) and their offline queue
 backend/supabase/usage.sql   server side of usage reporting
-test/         core logic + widget tests
+test/         core logic + widget tests; test/visual renders screens to PNG (EYE_SHOTS)
 ```
+
+## Simulator — transmitting to test receivers
+
+*Transmit → Simulator* makes this device advertise as an **EYE SENSOR** (protocol *EYE Sensors*, or a
+beacon frame + EYE Sensors), an **EYE BEACON** (Eddystone or iBeacon, battery block) or a plain
+**iBeacon**, at an interval from 100 ms to 10 s, with values that change by themselves (*Auto*) or
+stay as set. Receivers — BluePulse on another device (its *Pings* card shows the gaps), a Teltonika
+tracker — show what really arrives. *Count updates* turns the EYE SENSOR movement count into a packet
+counter, so missed updates can be counted exactly.
+
+| | Android (8+) | Windows |
+|---|---|---|
+| Interval | exact, kept by the radio (AdvertisingSet) | Windows sets its own rate: one short burst (60–200 ms) every interval |
+| Name | the phone's Bluetooth is renamed while transmitting and named back on Stop (also at the next start if the app was closed mid-run) | none — Windows does not publish names |
+| Scan response | yes | none — the scan response's data goes out in alternate bursts |
+| Transmit power | ultra low −21 / low −15 / medium −7 / high +1 dBm | taken as a preference where Windows supports it |
 
 ## Setup
 
@@ -163,6 +184,6 @@ defaults (PLAN.md §10b *Setup*).
 
 - UI follows the house utility look (`utility-ui` skill): tokens in `lib/ui/theme.dart`, one nav
   definition in `lib/ui/nav.dart`, no help text on pages (hold-tips instead), mono IDs, data grids.
-- Protocol fields not yet confirmed (EYE SENSOR value layouts) are marked provisional in PLAN.md §3.4
-  and in `teltonika.dart`; never invent a field.
+- Protocol fields are marked verified or provisional in PLAN.md §3 (the EYE SENSOR layout is verified from
+  the BTSMP1 page); never invent a field.
 - Debug builds show a **DEV** badge and keep their own settings.

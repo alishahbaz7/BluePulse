@@ -14,6 +14,22 @@ Releases are named `BluePulse-v<version>`.
   (a crash, the PC switched off) is kept up to its last second and marked *Interrupted*. A scan that
   heard nothing leaves no file, and demo data is never recorded. *Settings → Record every scan*
   turns it off.
+- **Simulator** (*Transmit → Simulator*): this device transmits as an EYE SENSOR, EYE BEACON or
+  iBeacon, so a receiver — BluePulse on another device, a Teltonika tracker — can be checked against
+  a known signal: if it advertises every 2 s, every 2 s is what should arrive. Interval 100 ms – 10 s,
+  transmit power, name, the EYE SENSOR protocol type (EYE Sensors, or Eddystone / iBeacon + EYE
+  Sensors), Eddystone / iBeacon IDs, and values that change by themselves like a real sensor's
+  (temperature and humidity drifting around the set value, movement events, angles shaking while
+  moving, the battery sagging, a magnet coming and going) or stay as set. *Count updates* makes the
+  movement count a packet counter, so a receiver can count exactly which updates it missed. The
+  packets are built by encoders that are the decoders' exact inverse, and shown decoded on the page.
+  Android keeps the interval exactly and advertises the name by renaming the phone's Bluetooth while
+  it transmits (named back on Stop); Windows, which sets its own advertising rate and sends no name,
+  sends a short burst every interval.
+- **EYE SENSOR fields confirmed** against the BTSMP1 wiki page: temperature, humidity, movement and
+  angle were decoded on the provisional layout, and the page's frame example (22.28 °C, 18 %, 3275
+  movements, pitch 11°, roll −57°, 3030 mV) now decodes exactly — and the encoder rebuilds it byte
+  for byte. Nothing changed in the decoding; it is no longer a guess.
 - **A friendlier welcome**: the first-start question is now "Hi! May I have your name, please?",
   saying the name is used to greet you and improve BluePulse — and still where to see what is
   shared.

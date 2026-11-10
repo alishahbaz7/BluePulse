@@ -23,8 +23,33 @@ using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisemen
 using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisementScanParameters;
 using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisementWatcher;
 using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEScanningMode;
+using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisement;
+using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisementDataSection;
+using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisementPublisher;
+using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisementPublisherStatus;
+using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisementPublisherStatusChangedEventArgs;
+using winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEManufacturerData;
 using winrt::Windows::Foundation::Metadata::ApiInformation;
 using winrt::Windows::Storage::Streams::DataReader;
+using winrt::Windows::Storage::Streams::DataWriter;
+using winrt::Windows::Storage::Streams::IBuffer;
+
+IBuffer ToBuffer(const std::vector<uint8_t> &bytes) {
+  DataWriter writer;
+  writer.WriteBytes(winrt::array_view<const uint8_t>(bytes));
+  return writer.DetachBuffer();
+}
+
+const EncodableValue *Find(const EncodableMap &map, const char *key) {
+  auto it = map.find(EncodableValue(key));
+  return it == map.end() ? nullptr : &it->second;
+}
+
+int64_t AsInt(const EncodableValue &v) {
+  if (const auto *i = std::get_if<int32_t>(&v)) return *i;
+  if (const auto *l = std::get_if<int64_t>(&v)) return *l;
+  return 0;
+}
 
 // Private message that tells the platform thread to send queued advertisements to Dart.
 constexpr UINT kDrainMessage = WM_APP + 0x2b7;
@@ -72,6 +97,7 @@ BluepulseBleWindowsPlugin::BluepulseBleWindowsPlugin(flutter::PluginRegistrarWin
 }
 
 BluepulseBleWindowsPlugin::~BluepulseBleWindowsPlugin() {
+  AdvertiseStop();
   Stop();
   registrar_->UnregisterTopLevelWindowProcDelegate(window_proc_id_);
 }
@@ -92,6 +118,18 @@ void BluepulseBleWindowsPlugin::HandleMethodCall(
   } else if (method == "stop") {
     Stop();
     result->Success();
+  } else if (method == "advertiseStart") {
+    const auto *args = std::get_if<EncodableMap>(call.arguments());
+    if (args == nullptr) {
+      result->Error("bad_args", "advertiseStart needs a map");
+      return;
+    }
+    AdvertiseStart(*args, std::move(result));
+  } else if (method == "advertiseStop") {
+    AdvertiseStop();
+    result->Success();
+  } else if (method == "advertiseStatus") {
+    result->Success(AdvertiseStatus());
   } else if (method == "stats") {
     result->Success(EncodableValue(EncodableMap{
         {EncodableValue("received"), EncodableValue(static_cast<int64_t>(received_.load()))},
@@ -152,6 +190,116 @@ void BluepulseBleWindowsPlugin::Stop() {
     // Stopping a watcher Windows already aborted is not a failure.
   }
   watcher_ = nullptr;
+}
+
+void BluepulseBleWindowsPlugin::AdvertiseStart(const EncodableMap &args,
+                                               std::unique_ptr<flutter::MethodResult<EncodableValue>> result) {
+  try {
+    AdvertiseStop();
+    BluetoothLEAdvertisement advertisement;
+    // Manufacturer data: [[companyId, bytes], ...]
+    if (const auto *v = Find(args, "manufacturer")) {
+      if (const auto *list = std::get_if<EncodableList>(v)) {
+        for (const auto &e : *list) {
+          const auto *pair = std::get_if<EncodableList>(&e);
+          if (pair == nullptr || pair->size() != 2) continue;
+          const auto *bytes = std::get_if<std::vector<uint8_t>>(&(*pair)[1]);
+          if (bytes == nullptr) continue;
+          advertisement.ManufacturerData().Append(
+              BluetoothLEManufacturerData(static_cast<uint16_t>(AsInt((*pair)[0])), ToBuffer(*bytes)));
+        }
+      }
+    }
+    // Complete list of 16-bit service UUIDs (AD type 0x03), little-endian.
+    if (const auto *v = Find(args, "uuids16")) {
+      if (const auto *list = std::get_if<EncodableList>(v); list != nullptr && !list->empty()) {
+        std::vector<uint8_t> bytes;
+        for (const auto &u : *list) {
+          const auto id = static_cast<uint16_t>(AsInt(u));
+          bytes.push_back(static_cast<uint8_t>(id & 0xFF));
+          bytes.push_back(static_cast<uint8_t>(id >> 8));
+        }
+        advertisement.DataSections().Append(BluetoothLEAdvertisementDataSection(0x03, ToBuffer(bytes)));
+      }
+    }
+    // 16-bit service data (AD type 0x16): [[uuid, bytes], ...]
+    if (const auto *v = Find(args, "serviceData16")) {
+      if (const auto *list = std::get_if<EncodableList>(v)) {
+        for (const auto &e : *list) {
+          const auto *pair = std::get_if<EncodableList>(&e);
+          if (pair == nullptr || pair->size() != 2) continue;
+          const auto *data = std::get_if<std::vector<uint8_t>>(&(*pair)[1]);
+          if (data == nullptr) continue;
+          const auto id = static_cast<uint16_t>(AsInt((*pair)[0]));
+          std::vector<uint8_t> bytes{static_cast<uint8_t>(id & 0xFF), static_cast<uint8_t>(id >> 8)};
+          bytes.insert(bytes.end(), data->begin(), data->end());
+          advertisement.DataSections().Append(BluetoothLEAdvertisementDataSection(0x16, ToBuffer(bytes)));
+        }
+      }
+    }
+
+    publisher_ = BluetoothLEAdvertisementPublisher(advertisement);
+    if (const auto *v = Find(args, "txPowerDbm")) {
+      if (!v->IsNull() &&
+          ApiInformation::IsPropertyPresent(
+              L"Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementPublisher",
+              L"PreferredTransmitPowerLevelInDBm")) {
+        try {
+          publisher_.PreferredTransmitPowerLevelInDBm(
+              winrt::Windows::Foundation::IReference<int16_t>(static_cast<int16_t>(AsInt(*v))));
+        } catch (...) {
+          // The adapter does not take a preferred power: Windows picks it.
+        }
+      }
+    }
+    publisher_status_ = -1;
+    publisher_error_ = 0;
+    publisher_token_ = publisher_.StatusChanged(
+        [this](const BluetoothLEAdvertisementPublisher &,
+               const BluetoothLEAdvertisementPublisherStatusChangedEventArgs &e) {
+          publisher_status_ = static_cast<int32_t>(e.Status());
+          publisher_error_ = static_cast<int32_t>(e.Error());
+        });
+    publisher_.Start();
+    publisher_starts_++;
+    result->Success(AdvertiseStatus());
+  } catch (const winrt::hresult_error &e) {
+    publisher_ = nullptr;
+    result->Error("start_failed", winrt::to_string(e.message()));
+  } catch (...) {
+    publisher_ = nullptr;
+    result->Error("start_failed", "Windows refused to advertise this packet");
+  }
+}
+
+void BluepulseBleWindowsPlugin::AdvertiseStop() {
+  if (!publisher_) return;
+  try {
+    publisher_.StatusChanged(publisher_token_);
+    publisher_.Stop();
+  } catch (...) {
+    // Already aborted by Windows.
+  }
+  publisher_ = nullptr;
+}
+
+EncodableValue BluepulseBleWindowsPlugin::AdvertiseStatus() {
+  int32_t status = publisher_status_.load();
+  if (publisher_ && status < 0) {
+    try {
+      status = static_cast<int32_t>(publisher_.Status());
+    } catch (...) {
+    }
+  }
+  // BluetoothLEAdvertisementPublisherStatus: 0 Created, 1 Waiting, 2 Started, 3 Stopping, 4 Stopped,
+  // 5 Aborted. Error: BluetoothError (0 Success, 1 RadioNotAvailable, 2 ResourceInUse, 4
+  // DisabledByPolicy, 6 NotSupported, 8 DisabledByUser, ...).
+  return EncodableValue(EncodableMap{
+      {EncodableValue("status"), EncodableValue(status)},
+      {EncodableValue("error"), EncodableValue(publisher_error_.load())},
+      {EncodableValue("active"), EncodableValue(static_cast<bool>(publisher_))},
+      {EncodableValue("starts"), EncodableValue(static_cast<int64_t>(publisher_starts_.load()))},
+  });
 }
 
 void BluepulseBleWindowsPlugin::OnReceived(const BluetoothLEAdvertisementReceivedEventArgs &args) {

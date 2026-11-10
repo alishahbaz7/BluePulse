@@ -72,7 +72,7 @@ void main() {
     });
   });
 
-  group('Teltonika block — EYE SENSOR (provisional layout)', () {
+  group('Teltonika block — EYE SENSOR', () {
     test('T-06 every value present', () {
       final d = t('01 BF 08 B4 2D 80 0C F6 00 5A 64');
       expect(d.ok, isTrue);
@@ -114,6 +114,44 @@ void main() {
       final d = t('01 20 F6 00');
       expect(d.error, contains('Roll'));
       expect(d.pitch, isNull, reason: 'pitch is only committed once both angles are read');
+    });
+  });
+
+  group('EYE SENSOR — BTSMP1 wiki frame (verified, EYE SENSOR _ BTSMP1 page, "frame parsing example")', () {
+    // Advertisement (iBeacon) and scan response (name + Teltonika block) as printed on the page.
+    const frame = '0201061AFF4C000215FFFFFFFF0B8C404510C655AAB636EBEFBB700055020C094D50315F313233343536370EFF9A0801B708B4120CCB0BFFC767';
+
+    test('T-20 every sensor value decodes as the page states', () {
+      final ad = AdvertisementData.parse(parseHex(frame));
+      expect(ad.name, 'MP1_1234567');
+      final d = decodeTeltonika(ad.manufacturerData[teltonikaCompanyId]!);
+      expect(d.ok, isTrue, reason: d.error);
+      expect(d.flags, 0xB7);
+      expect(d.temperatureC, 22.28, reason: '0x08B4 = 2228, big-endian, / 100');
+      expect(d.humidity, 18);
+      expect(d.magnetPresent, isTrue);
+      expect(d.magnetDetected, isFalse);
+      expect(d.moving, isFalse);
+      expect(d.movementCount, 3275);
+      expect(d.pitch, 11);
+      expect(d.roll, -57);
+      expect(d.lowBattery, isFalse);
+      expect(d.batteryMv, 3030);
+      expect(d.tail, isEmpty);
+    });
+
+    test('T-21 the encoder reproduces the page\'s Teltonika block byte for byte', () {
+      final bytes = encodeTeltonika(
+        temperatureC: 22.28,
+        humidity: 18,
+        magnetPresent: true,
+        moving: false,
+        movementCount: 3275,
+        pitch: 11,
+        roll: -57,
+        batteryMv: 3030,
+      );
+      expect(toHex(bytes), toHex(parseHex('01B708B4120CCB0BFFC767')));
     });
   });
 }

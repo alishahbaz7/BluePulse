@@ -1,5 +1,5 @@
 name: bluepulse_ble_windows
-description: "BluePulse's Windows BLE scanner: every advertisement and scan response as received, with raw AD sections."
+description: "BluePulse's Windows BLE: the scanner (every advertisement and scan response as received, raw AD sections) and the transmitter for the Simulator."
 publish_to: none
 
 environment:

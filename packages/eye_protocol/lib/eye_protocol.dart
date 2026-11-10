@@ -13,6 +13,7 @@ export 'src/beacon_id.dart';
 export 'src/byte_field.dart';
 export 'src/byte_reader.dart' show TruncatedException;
 export 'src/codec8e.dart';
+export 'src/encode.dart';
 export 'src/eddystone.dart';
 export 'src/hex.dart';
 export 'src/ibeacon.dart';

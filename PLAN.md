@@ -21,6 +21,7 @@ Plan v1 · 09-11-2026
 | **Usage** | **Monitoring live, 10-11-2026** (§10b): Supabase project *BluePulse* (Mumbai) set up, `tool/usage_check.dart` READY, the app's key confirmed unable to read anything, and a release build on the development laptop delivered its first report. Built: each copy reports who uses it (name and team asked once), its version, every start (time open, time scanning, devices heard, pages opened), updates and app errors; starts made offline are kept and sent later. Server side `backend/supabase/usage.sql` checked on Postgres 16 (25 checks: the app's key can write reports and read nothing); 30 app tests; screens checked by screenshot (`test/visual/usage_screens_test.dart`); `tool/usage_check.dart` checks a server without storing anything. Development runs report only when `USAGE_URL` is passed. **Next: control** (block, version per group, features) — the four answers in §10b first. |
 | P4 | **Sessions built for 1.0.1, 10-11-2026** (§8): every live scan recorded Start to Stop, listed, opened, exported or shared, deleted; checked on air on Windows (15 EYE devices) and by screenshot (wide, light, phone). Replay: next. |
 | P5–P6 | Not started (Android hardening, Configure). |
+| **Simulator** | **Built for 1.0.1, 10-11-2026**: this device transmits as an EYE SENSOR / EYE BEACON / iBeacon to test receivers (README *Simulator*). Encoders in `eye_protocol` (inverse of the decoders; BTSMP1 frame rebuilt byte for byte); Android plugin `packages/bluepulse_ble_android` (Java, AdvertisingSet: exact interval 100 ms – 10 s, power, name by renaming the phone's Bluetooth, restored on Stop or next start); Windows publisher in `bluepulse_ble_windows` (no interval control, no name, no scan response → a 60–200 ms burst every interval, scan-response data in alternate bursts). 14 tests; screens checked. **On air: to test** — Android → laptop (laptop session measures the gaps), laptop → phone (does Windows keep one address across bursts?). |
 
 ## 1. Decisions
 
@@ -71,7 +72,7 @@ maps / positioning.
 Source: [`EYE BEACON _ BTSID1 - Teltonika Telematics Wiki.pdf`](EYE%20BEACON%20_%20BTSID1%20-%20Teltonika%20Telematics%20Wiki.pdf)
 (wiki revision `oldid=117310`), in this folder.
 
-Status marks: ✅ verified from the PDF · 🟡 provisional — EYE Sensor detail not on the BTSID1 page,
+Status marks: ✅ verified from the PDF (the EYE SENSOR fields from the BTSMP1 page and its frame example, 10-11-2026) · 🟡 provisional —
 to confirm against the EYE SENSOR / BTSMP1 page · 📘 public standard.
 
 ### 3.1 Packets ✅
@@ -130,12 +131,12 @@ with a capture), then:
 
 | Bit | Meaning | Value bytes | Decode | Status |
 |---|---|---|---|---|
-| 0 | temperature present | 2 | int16 big-endian ÷ 100 → °C | meaning ✅ · size 🟡 |
-| 1 | humidity present | 1 | uint8 → % | meaning ✅ · size 🟡 |
+| 0 | temperature present | 2 | int16 big-endian ÷ 100 → °C | ✅ (BTSMP1) |
+| 1 | humidity present | 1 | uint8 → % | ✅ (BTSMP1) |
 | 2 | magnetic sensor present | 0 | — | ✅ |
 | 3 | magnetic field detected (valid only when bit 2 is set) | 0 | — | ✅ |
-| 4 | movement counter present | 2 | uint16 big-endian: bit 15 = moving now, bits 0–14 = count | meaning ✅ · layout 🟡 |
-| 5 | movement angle present | 3 | pitch int8 °, roll int16 big-endian ° | meaning ✅ · layout 🟡 |
+| 4 | movement counter present | 2 | uint16 big-endian: bit 15 = moving now, bits 0–14 = count | ✅ (BTSMP1) |
+| 5 | movement angle present | 3 | pitch int8 ° (−90…+90), roll int16 big-endian ° (−180…+180) | ✅ (BTSMP1) |
 | 6 | low battery | 0 | — | ✅ |
 | 7 | battery voltage present | 1 | **2000 + value × 10 → mV** | ✅ |
 
@@ -363,8 +364,8 @@ Teltonika block (decoder input = payload after the company ID, as both OS APIs r
 | T-03 | `01 00` | no values | ✅ |
 | T-04 | `01 80` | truncated (battery promised) | rule |
 | T-05 | `02 80 63` | unsupported version, raw kept | rule |
-| T-06 | `01 BF 08 B4 2D 80 0C F6 00 5A 64` | 22.28 °C · 45 % · magnet present + detected · moving · count 12 · pitch −10° · roll 90° · 3000 mV | 🟡 |
-| T-07 | `01 01 FF 38` | −2.00 °C | 🟡 |
+| T-06 | `01 BF 08 B4 2D 80 0C F6 00 5A 64` | 22.28 °C · 45 % · magnet present + detected · moving · count 12 · pitch −10° · roll 90° · 3000 mV | ✅ layout |
+| T-07 | `01 01 FF 38` | −2.00 °C | ✅ layout |
 
 BLE frames:
 
@@ -509,7 +510,7 @@ To decide before phase 2:
 | Eddystone service data not exposed on a platform | same; native scanner for that platform only |
 | Laptop adapter drops scan responses | test a second adapter; a beacon with the frame off sends the block in the advertisement |
 | Android filters / throttling | rules in §5 |
-| Sensor field layout (🟡) wrong | confirm with the BTSMP1 page and a capture before P2 ends |
+| Sensor field layout wrong | **closed 10-11-2026**: confirmed by the BTSMP1 page's frame example (T-20, T-21) |
 | MAC is random on some firmware | key by beacon ID if the address changes between sessions |
 | A copy without the usage channel is unseen until it updates | it ships in 1.0.0, the first release; `package_release.dart` warns if `UsageConfig` is ever emptied |
 | A free Supabase project pauses after 7 days without requests | reports wait on each copy and go out once it is restored; daily use keeps it awake; paid tier or self-hosting when it matters |
@@ -531,7 +532,7 @@ Commands: `flutter pub get` · `flutter analyze` · `flutter test` · `dart test
 
 ## 13. Inputs still needed
 
-1. **EYE SENSOR / BTSMP1 wiki page** saved as PDF here — confirms the 🟡 sensor fields.
+1. ~~EYE SENSOR / BTSMP1 wiki page~~ — received 10-11-2026 with the MESH pages; the sensor fields are confirmed.
 2. **Raw captures** (nRF Connect → raw data) from one BTSID1 and one BTSMP1, advertisement and scan
    response.
 3. If tracker records should carry sensor values: the tracker's AVL ID list for EYE sensor

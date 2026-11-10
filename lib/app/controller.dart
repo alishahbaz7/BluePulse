@@ -14,6 +14,8 @@ import '../scanner/demo_scanner.dart';
 import '../scanner/scanner.dart';
 import '../scanner/universal_ble_scanner.dart';
 import '../scanner/windows_ble_scanner.dart';
+import '../simulator/advertiser.dart';
+import '../simulator/sim_service.dart';
 import '../update/semver.dart';
 import '../update/transport.dart';
 import '../update/update_config.dart';
@@ -46,11 +48,15 @@ class AppController extends ChangeNotifier {
     UpdateService? updates,
     UsageService? usage,
     this.sessions,
+    SimulatorService? simulator,
   })  : _live = liveScanner,
         updates = updates ?? UpdateService.disabled(),
-        usage = usage ?? UsageService.disabled() {
+        usage = usage ?? UsageService.disabled(),
+        simulator = simulator ??
+            SimulatorService(advertiser: UnsupportedAdvertiser('Transmitting works in the Windows and Android apps')) {
     this.updates.addListener(notifyListeners);
     this.usage.addListener(notifyListeners);
+    this.simulator.addListener(notifyListeners);
     settings.addListener(_onSettings);
     // Pages depend on the controller alone, so registry and device-book updates reach them through it.
     registry.addListener(notifyListeners);
@@ -85,9 +91,12 @@ class AppController extends ChangeNotifier {
       demoScanner: DemoScanner(),
       usage: _usageService(prefs, version),
       sessions: await _sessionStore(),
+      simulator: SimulatorService(advertiser: BleAdvertiser.forThisDevice(), prefs: prefs),
     );
-    // Closing the window stops the scan first, so the session is saved whole rather than interrupted.
+    // Closing the window stops the scan first, so the session is saved whole rather than interrupted,
+    // and stops transmitting (on Android that also gives the phone its Bluetooth name back).
     c._exitListener = AppLifecycleListener(onExitRequested: () async {
+      await c.simulator.stop();
       await c.stopScan();
       return AppExitResponse.exit;
     });
@@ -283,9 +292,14 @@ class AppController extends ChangeNotifier {
     if (wasScanning) await startScan();
   }
 
+  /// Transmits a simulated EYE device or beacon, to test receivers.
+  final SimulatorService simulator;
+
   @override
   void dispose() {
     _exitListener?.dispose();
+    simulator.removeListener(notifyListeners);
+    simulator.dispose();
     settings.removeListener(_onSettings);
     registry.removeListener(notifyListeners);
     registry.book.removeListener(notifyListeners);

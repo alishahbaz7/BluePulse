@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Every page the app has.
-enum PageId { overview, devices, deviceDetail, packets, proximity, decode, sessions, configure, settings }
+enum PageId { overview, devices, deviceDetail, packets, proximity, decode, simulator, sessions, configure, settings }
 
 /// One navigation definition feeds the sidebar, the top bar title and tip, and the tests.
 class NavItem {
@@ -85,6 +85,13 @@ const navItems = <NavItem>[
     title: 'Decode',
     tip: 'A tracker packet, AVL value or BLE packet decoded from its hex',
     icon: Icons.data_object_outlined,
+  ),
+  NavItem(
+    id: PageId.simulator,
+    module: 'Transmit',
+    title: 'Simulator',
+    tip: 'This device transmits as an EYE SENSOR, EYE BEACON or iBeacon at the interval you set, to test receivers',
+    icon: Icons.cell_tower,
   ),
   NavItem(
     id: PageId.sessions,

@@ -41,6 +41,13 @@ class BluepulseBleWindowsPlugin : public flutter::Plugin {
   void OnReceived(
       const winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisementReceivedEventArgs &args);
   void Enqueue(flutter::EncodableValue &&value);
+
+  // Transmitting: one publisher advertising the payload Dart built (a simulated EYE device or beacon).
+  void AdvertiseStart(const flutter::EncodableMap &args,
+                      std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+  void AdvertiseStop();
+  flutter::EncodableValue AdvertiseStatus();
+
   std::optional<LRESULT> HandleWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   void Drain();
 
@@ -60,6 +67,12 @@ class BluepulseBleWindowsPlugin : public flutter::Plugin {
   bool posted_ = false;
   std::atomic<uint64_t> received_{0};
   std::atomic<uint64_t> dropped_{0};
+
+  winrt::Windows::Devices::Bluetooth::Advertisement::BluetoothLEAdvertisementPublisher publisher_{nullptr};
+  winrt::event_token publisher_token_{};
+  std::atomic<int32_t> publisher_status_{-1};
+  std::atomic<int32_t> publisher_error_{0};
+  std::atomic<uint64_t> publisher_starts_{0};
 };
 
 }  // namespace bluepulse_ble_windows

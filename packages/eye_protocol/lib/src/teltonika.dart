@@ -35,8 +35,8 @@ abstract final class EyeFlag {
 
 /// The decoded Teltonika manufacturer block.
 ///
-/// Value layouts for temperature, humidity, movement and angle are provisional until confirmed
-/// against the EYE SENSOR / BTSMP1 page (PLAN.md §3.4); battery and flag meanings are verified.
+/// Every value layout is verified: battery and flags against the BTSID1 page, temperature, humidity,
+/// movement and angle against the BTSMP1 page's frame example (PLAN.md §3.4, test T-20).
 class TeltonikaData {
   TeltonikaData({
     required this.raw,
