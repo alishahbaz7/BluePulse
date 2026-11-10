@@ -90,9 +90,8 @@ const navItems = <NavItem>[
     id: PageId.sessions,
     module: 'Data',
     title: 'Sessions',
-    tip: 'Recorded scan sessions, exported as CSV and replayed',
+    tip: 'Every live scan saved from Start scan to Stop scan, to open in Excel, share or delete',
     icon: Icons.history_outlined,
-    soon: true,
   ),
   NavItem(
     id: PageId.configure,

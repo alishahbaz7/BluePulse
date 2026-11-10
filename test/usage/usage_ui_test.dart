@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:bluepulse/app/controller.dart';
 import 'package:bluepulse/main.dart';
 import 'package:bluepulse/ui/nav.dart';
+import 'package:bluepulse/ui/usage_ui.dart';
 import 'package:bluepulse/usage/usage_service.dart';
 import 'package:bluepulse/usage/usage_store.dart';
 import 'package:flutter/material.dart';
@@ -55,14 +56,14 @@ void feedDevices(AppController c) {
 void main() {
   testWidgets('first start asks for the name before anything else, and it cannot be skipped', (tester) async {
     final (c, transport) = await pumpWithUsage(tester);
-    expect(find.text('Who is using BluePulse?'), findsOneWidget);
+    expect(find.text(welcomeTitle), findsOneWidget);
     final continueButton = find.widgetWithText(FilledButton, 'Continue');
     expect(tester.widget<FilledButton>(continueButton).onPressed, isNull, reason: 'no name yet');
     expect(find.text('Cancel'), findsNothing);
 
     await tester.tapAt(const Offset(5, 5)); // outside the dialog
     await tester.pump();
-    expect(find.text('Who is using BluePulse?'), findsOneWidget);
+    expect(find.text(welcomeTitle), findsOneWidget);
 
     expect(find.byType(TextField), findsOneWidget, reason: 'the name is all that is asked');
     await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Shahbaz Khan');
@@ -73,7 +74,7 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    expect(find.text('Who is using BluePulse?'), findsNothing);
+    expect(find.text(welcomeTitle), findsNothing);
     expect(c.usage.needsName, isFalse);
     final install = transport.reports.last['install']! as Map;
     expect(install['name'], 'Shahbaz Khan');
@@ -83,7 +84,7 @@ void main() {
 
   testWidgets('a known person is not asked again', (tester) async {
     final (c, _) = await pumpWithUsage(tester, stored: {'installId': 'a' * 32, 'name': 'Shahbaz Khan'});
-    expect(find.text('Who is using BluePulse?'), findsNothing);
+    expect(find.text(welcomeTitle), findsNothing);
     await finish(tester, c);
   });
 
@@ -124,7 +125,7 @@ void main() {
 
   testWidgets('a build without a usage channel says so and asks nothing', (tester) async {
     final (c, _) = await pumpWithUsage(tester, enabled: false, page: PageId.settings);
-    expect(find.text('Who is using BluePulse?'), findsNothing);
+    expect(find.text(welcomeTitle), findsNothing);
     expect(find.textContaining('Hello'), findsNothing);
     expect(find.text('Usage reporting is not set in this build'), findsOneWidget);
     await finish(tester, c);

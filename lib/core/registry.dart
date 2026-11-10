@@ -9,6 +9,7 @@ import '../scanner/scanner.dart';
 import 'device.dart';
 import 'device_book.dart';
 import 'rx_log.dart';
+import 'session_store.dart';
 import 'signal.dart';
 
 /// One packet as received, for the Packets page.
@@ -183,11 +184,16 @@ class DeviceRegistry extends ChangeNotifier {
     _schedule(fast: fast);
   }
 
-  /// Every packet goes into its device's log, and into the device's recording if one is running.
+  /// Every packet goes into its device's log, into the device's recording if one is running, and
+  /// into the session being recorded.
   void _keep(EyeDevice d, ScanEvent e) {
     final entry = d.recordRx(e);
     _recorders[d.mac]?.write(entry);
+    session?.write(entry, mac: d.mac, name: d.name, tag: book.tagOf(d.mac));
   }
+
+  /// The session being recorded: every packet from every tracked device, from Start to Stop scan.
+  SessionWriter? session;
 
   // Recording a device's packets to a CSV file while they arrive.
   final _recorders = <String, RxRecorder>{};
@@ -257,6 +263,8 @@ class DeviceRegistry extends ChangeNotifier {
       r.stop();
     }
     _recorders.clear();
+    session?.stop();
+    session = null;
     _disposed = true;
     _tick?.cancel();
     _pending?.cancel();

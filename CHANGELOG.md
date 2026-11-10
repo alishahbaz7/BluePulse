@@ -5,7 +5,20 @@ Releases are named `BluePulse-v<version>`.
 
 ## 1.0.1
 
-In progress.
+- **Sessions**: every live scan is saved, from *Start scan* to *Stop scan*, so a test can be looked
+  at afterwards without having pressed Record first. Each session is one CSV with the same columns
+  as a device's packet log — every packet from every EYE device and beacon, in focus or not, with
+  decoded values and raw bytes — in `Documents\BluePulse\sessions` on Windows. The new *Sessions*
+  page lists them (start, duration, devices, packets, size) to open in Excel, save a copy (share on
+  Android) or delete. Closing the window saves the session whole; a session the app could not close
+  (a crash, the PC switched off) is kept up to its last second and marked *Interrupted*. A scan that
+  heard nothing leaves no file, and demo data is never recorded. *Settings → Record every scan*
+  turns it off.
+- **A friendlier welcome**: the first-start question is now "Hi! May I have your name, please?",
+  saying the name is used to greet you and improve BluePulse — and still where to see what is
+  shared.
+- Fixed: on a narrow phone the page's section name under the title could wrap and spill out of the
+  top bar.
 
 ## 1.0.0
 

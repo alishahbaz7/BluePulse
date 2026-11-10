@@ -23,6 +23,9 @@ class AppSettings extends ChangeNotifier {
   /// Show every iBeacon / Eddystone device, not only Teltonika EYE devices.
   bool showAllBeacons = false;
 
+  /// Save every live scan as a session, from Start scan to Stop scan.
+  bool recordSessions = true;
+
   /// Time for the smoothed RSSI to reach a new level, as the tracker's *averaging timeout*.
   int averagingSeconds = 10;
 
@@ -47,6 +50,7 @@ class AppSettings extends ChangeNotifier {
     scanSource = ScanSource.values.elementAtOrNull(p.getInt('${_prefix}scanSource') ?? 0) ?? ScanSource.live;
     if (!_liveSupported) scanSource = ScanSource.demo;
     showAllBeacons = p.getBool('${_prefix}showAllBeacons') ?? false;
+    recordSessions = p.getBool('${_prefix}recordSessions') ?? true;
     averagingSeconds = p.getInt('${_prefix}averagingSeconds') ?? 10;
     nearDbm = p.getInt('${_prefix}nearDbm') ?? -65;
     awayDbm = p.getInt('${_prefix}awayDbm') ?? -85;
@@ -71,6 +75,7 @@ class AppSettings extends ChangeNotifier {
     p.setBool('${_prefix}railFolded', railFolded);
     p.setInt('${_prefix}scanSource', scanSource.index);
     p.setBool('${_prefix}showAllBeacons', showAllBeacons);
+    p.setBool('${_prefix}recordSessions', recordSessions);
     p.setInt('${_prefix}averagingSeconds', averagingSeconds);
     p.setInt('${_prefix}nearDbm', nearDbm);
     p.setInt('${_prefix}awayDbm', awayDbm);

@@ -85,6 +85,16 @@ The web build opens a given view from its URL, for demos and screenshots:
 `?page=devices|deviceDetail|packets|proximity|decode|settings`, `&mac=DE:40:00:00:01:01`,
 `&theme=light|dark|auto`, `&hex=<tracker packet or AVL value>`.
 
+## Where files go
+
+| What | Windows | Android |
+|---|---|---|
+| Sessions — every live scan, Start to Stop (`lib/core/session_store.dart`) | `Documents\BluePulse\sessions` | app documents `sessions/`, shared from the Sessions page |
+| Device logs — *Record* and *Save log* on a device page | `Documents\BluePulse\logs` | app documents `logs/`, through the share sheet |
+
+Both are CSV with the same columns (`RxCsv` in `lib/core/rx_log.dart`); a session's summary (start,
+end, packets, devices) sits beside it as `.json`.
+
 ## Versions
 
 The version is declared **once**, in `pubspec.yaml` (`version: 1.0.0+1`); the app reads it at run

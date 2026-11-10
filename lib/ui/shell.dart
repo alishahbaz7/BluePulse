@@ -13,6 +13,7 @@ import 'pages/devices_page.dart';
 import 'pages/overview_page.dart';
 import 'pages/packets_page.dart';
 import 'pages/proximity_page.dart';
+import 'pages/sessions_page.dart';
 import 'pages/settings_page.dart';
 import 'theme.dart';
 import 'update_ui.dart';
@@ -110,7 +111,8 @@ class _ShellState extends State<Shell> {
         PageId.proximity => const ProximityPage(),
         PageId.decode => DecodePage(initialHex: widget.initialHex),
         PageId.settings => const SettingsPage(),
-        PageId.sessions || PageId.configure => const SizedBox.shrink(),
+        PageId.sessions => const SessionsPage(),
+        PageId.configure => const SizedBox.shrink(),
       };
 
   @override
@@ -419,7 +421,8 @@ class _TopBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: t.text)),
-              Text(item.module, style: TextStyle(fontSize: 12, color: t.dim)),
+              Text(item.module,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: t.dim)),
             ]),
           ),
         ),

@@ -4,10 +4,10 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/controller.dart';
+import '../../app/paths.dart';
 import '../../core/device.dart';
 import '../../core/rx_log.dart';
 import '../format.dart';
@@ -16,14 +16,8 @@ import 'common.dart';
 import 'data_grid.dart';
 import 'device_name.dart';
 
-/// Where logs go: Documents\BluePulse\logs on Windows, the app's own documents folder on Android
-/// (shared from there through the share sheet).
-Future<Directory> rxLogsDir() async {
-  final docs = await getApplicationDocumentsDirectory();
-  final dir = Directory(Platform.isWindows ? p.join(docs.path, 'BluePulse', 'logs') : p.join(docs.path, 'logs'));
-  await dir.create(recursive: true);
-  return dir;
-}
+/// Where logs go: Documents\BluePulse\logs on Windows, the app's own documents folder on Android.
+Future<Directory> rxLogsDir() => appFilesDir('logs');
 
 /// A device's received packets, live: newest first, every packet in the time window, with Pause,
 /// Record (writes each packet to a CSV file as it arrives) and Save log (a CSV of what is kept).

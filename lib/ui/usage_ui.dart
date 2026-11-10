@@ -5,6 +5,9 @@ import 'format.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 
+/// The first-start question: asked gently, as a welcome — the app is getting to know its user.
+const welcomeTitle = 'Hi! May I have your name, please?';
+
 /// Asks for the person's name. At the first start it must be answered ([required]); from Settings
 /// it can be cancelled.
 Future<void> showIdentityDialog(BuildContext context, {bool required = false}) => showDialog<void>(
@@ -57,13 +60,15 @@ class _IdentityDialogState extends State<_IdentityDialog> {
       child: AlertDialog(
         backgroundColor: t.panel,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: t.frame)),
-        title: Text(widget.required ? 'Who is using BluePulse?' : 'Your name',
+        title: Text(widget.required ? welcomeTitle : 'Your name',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: t.text)),
         content: SizedBox(
           width: 420,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // Friendly, and still honest: the name is shared, and Settings shows exactly what is.
             Text(
-              'BluePulse reports your name, this device, the app version and how the app is used.',
+              "We'll use it to greet you and to make BluePulse better for you. "
+              'Settings → Usage reporting shows what is shared.',
               style: TextStyle(fontSize: 13.5, color: t.dim, height: 1.4),
             ),
             const SizedBox(height: 16),
@@ -71,6 +76,7 @@ class _IdentityDialogState extends State<_IdentityDialog> {
               controller: _name,
               autofocus: true,
               maxLength: 80,
+              textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _save(),
               decoration: const InputDecoration(labelText: 'Name', counterText: ''),

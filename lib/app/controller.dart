@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io' show FileSystemException;
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -7,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/device_book.dart';
 import '../core/registry.dart';
+import '../core/session_store.dart';
 import '../scanner/demo_scanner.dart';
 import '../scanner/scanner.dart';
 import '../scanner/universal_ble_scanner.dart';
@@ -21,6 +24,7 @@ import '../usage/usage_device.dart';
 import '../usage/usage_service.dart';
 import '../usage/usage_store.dart';
 import '../usage/usage_transport.dart';
+import 'paths.dart';
 import 'scan_metrics.dart';
 import 'settings.dart';
 
@@ -41,6 +45,7 @@ class AppController extends ChangeNotifier {
     this.version = '—',
     UpdateService? updates,
     UsageService? usage,
+    this.sessions,
   })  : _live = liveScanner,
         updates = updates ?? UpdateService.disabled(),
         usage = usage ?? UsageService.disabled() {
@@ -51,7 +56,8 @@ class AppController extends ChangeNotifier {
     registry.addListener(notifyListeners);
     registry.book.addListener(notifyListeners);
     _source = settings.scanSource;
-    scanner.status.addListener(notifyListeners);
+    _recordSessions = settings.recordSessions;
+    scanner.status.addListener(_onStatus);
   }
 
   static Future<AppController> create() async {
@@ -78,7 +84,13 @@ class AppController extends ChangeNotifier {
           : (defaultTargetPlatform == TargetPlatform.windows ? WindowsBleScanner() : UniversalBleScanner()),
       demoScanner: DemoScanner(),
       usage: _usageService(prefs, version),
+      sessions: await _sessionStore(),
     );
+    // Closing the window stops the scan first, so the session is saved whole rather than interrupted.
+    c._exitListener = AppLifecycleListener(onExitRequested: () async {
+      await c.stopScan();
+      return AppExitResponse.exit;
+    });
     unawaited(c.scanner.init());
     unawaited(c.updates.cleanup());
     // Usage first, so the update check below is recorded in this start's session.
@@ -162,28 +174,109 @@ class AppController extends ChangeNotifier {
     if (scanning) return;
     registry.startSession();
     _sub ??= scanner.events.listen(registry.ingest);
+    await _startRecording();
     await scanner.start();
+    if (!scanning) await _stopRecording(); // the radio refused: nothing to record
   }
 
   Future<void> stopScan() async {
     await scanner.stop();
     await _sub?.cancel();
     _sub = null;
+    await _stopRecording();
   }
 
   Future<void> toggleScan() => scanning ? stopScan() : startScan();
 
+  // Sessions: every live scan saved from Start to Stop.
+
+  /// Recorded sessions; null where nothing is recorded (the web build, tests without a folder).
+  final SessionStore? sessions;
+
+  /// Bumped when a session starts, stops or is deleted, so the Sessions page reloads its list.
+  int sessionsRevision = 0;
+
+  /// Why the last scan was not recorded, when it failed.
+  String? sessionProblem;
+
+  /// The session being recorded now.
+  SessionWriter? get recording => registry.session;
+
+  late bool _recordSessions;
+
+  static Future<SessionStore?> _sessionStore() async {
+    if (!liveScanSupported) return null;
+    try {
+      return SessionStore(await appFilesDir('sessions'));
+    } catch (_) {
+      return null; // no documents folder: scanning still works, nothing is recorded
+    }
+  }
+
+  Future<void> _startRecording() async {
+    final store = sessions;
+    if (store == null || !settings.recordSessions || isDemo || registry.session != null) return;
+    try {
+      registry.session = await store.start(platform: defaultTargetPlatform.name, version: version);
+      sessionProblem = null;
+    } catch (e) {
+      sessionProblem = 'This scan is not being recorded: ${e is FileSystemException ? e.osError?.message ?? e.message : e}';
+    }
+    sessionsRevision++;
+    notifyListeners();
+  }
+
+  /// Closes the session; one that caught nothing is not kept. Stopping the radio also ends it (via
+  /// [_onStatus]), so a second caller waits for the close already under way.
+  Future<void> _stopRecording() {
+    final s = registry.session;
+    if (s == null) return _closing ?? Future<void>.value();
+    registry.session = null;
+    return _closing = () async {
+      try {
+        final info = await s.stop();
+        if (s.packets == 0) await sessions?.delete(info);
+      } catch (_) {
+        // the file stays as far as it was written
+      } finally {
+        _closing = null;
+        sessionsRevision++;
+        notifyListeners();
+      }
+    }();
+  }
+
+  Future<void>? _closing;
+  AppLifecycleListener? _exitListener;
+
+  Future<void> deleteSession(SessionInfo s) async {
+    if (registry.session?.csv.path == s.csv.path) return;
+    await sessions?.delete(s);
+    sessionsRevision++;
+    notifyListeners();
+  }
+
+  /// The radio stopped on its own (Bluetooth turned off): the session ends with it.
+  void _onStatus() {
+    if (!scanning && registry.session != null) unawaited(_stopRecording());
+    notifyListeners();
+  }
+
   void _onSettings() {
     if (settings.scanSource != _source) unawaited(_switchSource(settings.scanSource));
+    if (settings.recordSessions != _recordSessions) {
+      _recordSessions = settings.recordSessions;
+      unawaited(_recordSessions ? (scanning ? _startRecording() : Future<void>.value()) : _stopRecording());
+    }
     notifyListeners();
   }
 
   Future<void> _switchSource(ScanSource next) async {
     final wasScanning = scanning;
     await stopScan();
-    scanner.status.removeListener(notifyListeners);
+    scanner.status.removeListener(_onStatus);
     _source = next;
-    scanner.status.addListener(notifyListeners);
+    scanner.status.addListener(_onStatus);
     registry.clear();
     await scanner.init();
     notifyListeners();
@@ -192,6 +285,7 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _exitListener?.dispose();
     settings.removeListener(_onSettings);
     registry.removeListener(notifyListeners);
     registry.book.removeListener(notifyListeners);
@@ -200,7 +294,7 @@ class AppController extends ChangeNotifier {
     usage.dispose();
     updates.removeListener(notifyListeners);
     updates.dispose();
-    scanner.status.removeListener(notifyListeners);
+    scanner.status.removeListener(_onStatus);
     _sub?.cancel();
     _live?.dispose();
     demoScanner.dispose();

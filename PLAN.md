@@ -9,17 +9,18 @@ Plan v1 · 09-11-2026
 
 ---
 
-## 0. Status — 09-11-2026
+## 0. Status — 10-11-2026
 
 | Phase | State |
 |---|---|
-| P0 | **Done on Windows, 09-11-2026**, with 15–19 real EYE sensors (`MP1_…`, `MG1_…`). It found the gap D5 allowed for: `universal_ble`'s Windows scanner drops repeated advertisements (only a backfill, a scan response or a connectability change gets through — `scan_result_merge.h`), so new sensor values were lost and old ones re-sent. Replaced on Windows by `packages/bluepulse_ble_windows` (every packet, raw bytes). Separately, Windows itself listens 18 ms of every 118 ms (≈15 %) and makes the scan interval/window read-only for apps; the low-latency preset changed nothing on this laptop, so a laptop hears fewer packets than a phone. Android on-air test still to do. |
+| P0 | **Done on Windows, 09-11-2026**, with 15–19 real EYE sensors (`MP1_…`, `MG1_…`). It found the gap D5 allowed for: `universal_ble`'s Windows scanner drops repeated advertisements (only a backfill, a scan response or a connectability change gets through — `scan_result_merge.h`), so new sensor values were lost and old ones re-sent. Replaced on Windows by `packages/bluepulse_ble_windows` (every packet, raw bytes). Separately, Windows itself listens 18 ms of every 118 ms (≈15 %) and makes the scan interval/window read-only for apps; the low-latency preset changed nothing on this laptop, so a laptop hears fewer packets than a phone. **Android on air: done 10-11-2026** on a moto g57 power (`universal_ble`). |
 | P1 | **Done.** `packages/eye_protocol`: AD parser, Eddystone, iBeacon, Teltonika block, Codec 8 / 8E + CRC, AVL 385 / 10828 / 10829 / 10831, byte inspector. 53 tests; both wiki tracker packets verified (CRC `823F`, `8811`). |
-| P2 | **Built, verified on demo data and tests** (26 app tests): scanners, registry, ADV + scan-response merge, repeats, interval, smoothing, not seen, proximity, distance. Real hardware pending. |
+| P2 | **Built, verified on demo data and tests** (26 app tests): scanners, registry, ADV + scan-response merge, repeats, interval, smoothing, not seen, proximity, distance. **Verified on air** on Windows and Android, 09/10-11-2026. |
 | P3 | **Built**: shell (rail / top bar / drawer), Overview, Devices, Device detail, Packets, Proximity, Decode, Settings. Checked by screenshot in dark, light, folded rail and phone width (web build, demo data). |
-| **OTA** | **Built** (top priority, 09-11-2026): launcher, update check / download / verify / install / restart, Android APK install, release packaging. 27 update tests incl. end-to-end over real sockets with GitHub-style redirects; 4 launcher checks. Waiting for: the releases repository name, the Android signing key, and a real Windows build (§12). |
+| **OTA** | **Built** (top priority, 09-11-2026): launcher, update check / download / verify / install / restart, Android APK install, release packaging. 27 update tests incl. end-to-end over real sockets with GitHub-style redirects; 4 launcher checks. **Released: 1.0.0 published 10-11-2026** (github.com/alishahbaz7/BluePulse, tag `v1.0.0`); the APK is signed with BluePulse's release key (`keys/`, git-ignored). |
 | **Usage** | **Monitoring live, 10-11-2026** (§10b): Supabase project *BluePulse* (Mumbai) set up, `tool/usage_check.dart` READY, the app's key confirmed unable to read anything, and a release build on the development laptop delivered its first report. Built: each copy reports who uses it (name and team asked once), its version, every start (time open, time scanning, devices heard, pages opened), updates and app errors; starts made offline are kept and sent later. Server side `backend/supabase/usage.sql` checked on Postgres 16 (25 checks: the app's key can write reports and read nothing); 30 app tests; screens checked by screenshot (`test/visual/usage_screens_test.dart`); `tool/usage_check.dart` checks a server without storing anything. Development runs report only when `USAGE_URL` is passed. **Next: control** (block, version per group, features) — the four answers in §10b first. |
-| P4–P6 | Not started (Sessions, Android hardening, Configure). |
+| P4 | **Sessions built for 1.0.1, 10-11-2026** (§8): every live scan recorded Start to Stop, listed, opened, exported or shared, deleted; checked on air on Windows (15 EYE devices) and by screenshot (wide, light, phone). Replay: next. |
+| P5–P6 | Not started (Android hardening, Configure). |
 
 ## 1. Decisions
 
@@ -342,9 +343,14 @@ debug builds show a **DEV** badge and keep separate settings from release.
 
 ## 8. Storage and export
 
-A session starts with *Start scan* and ends with *Stop scan*. Readings go to a CSV in the app's data
-folder (time, MAC, name, model, RSSI, ID, battery, sensor values, raw hex). *Sessions* lists them with
-*Export* and *Delete* (red, confirmed). Replay comes after export.
+A session starts with *Start scan* and ends with *Stop scan* (or the window closing, which stops the
+scan first). Every packet from every tracked device — in focus or not — goes to one CSV with the
+device-log columns (`RxCsv`: time UTC and local, MAC, name, tag, kind, RSSI, gap, decoded values, raw
+hex), written once a second; a `.json` summary beside it (start, last write, end, packets, devices)
+feeds the list. Folder: `Documents\BluePulse\sessions` on Windows, the app's documents on Android. A
+session without an end is *Interrupted* and kept as far as it was written; one that heard nothing is
+not kept; demo data is never recorded; *Settings → Record every scan* turns it off. *Sessions* lists
+them with *Open* (Windows), *Save a copy* / *Share* and *Delete* (red, confirmed). Replay is next.
 
 ## 9. Test vectors
 
@@ -511,13 +517,13 @@ To decide before phase 2:
 
 ## 12. Development setup
 
-| Need | Status 09-11-2026 |
+| Need | Status 10-11-2026 |
 |---|---|
 | Flutter SDK (stable) | **installed** — 3.47.9 / Dart 3.13.7 at `C:\Users\GT2575\develop\flutter`; add `...\flutter\bin` to PATH |
-| Visual Studio 2022, workload *Desktop development with C++* | **missing** — needed to build the Windows app |
-| Android Studio (SDK + platform tools) | **missing** — needed to build the Android app |
-| Windows Developer Mode | **off** — Flutter plugins need it on Windows |
-| Android phone, USB debugging on | needed — the emulator has no Bluetooth |
+| Visual Studio 2022, workload *Desktop development with C++* | **installed** (Build Tools 2022, Windows SDK 26100) |
+| Android SDK (platform 36, build-tools 36.0.0) + JDK 21 | **installed** — SDK at `%LOCALAPPDATA%\Android\Sdk`, JDK at `C:\Users\GT2575\develop\jdk-21.0.13.0.2+1`; no Android Studio needed |
+| Windows Developer Mode | **on** |
+| Android phone | moto g57 power; ADB over USB did not connect, so APKs go over by file transfer |
 | Bluetooth LE radio in the laptop | present |
 
 Commands: `flutter pub get` · `flutter analyze` · `flutter test` · `dart test` (in

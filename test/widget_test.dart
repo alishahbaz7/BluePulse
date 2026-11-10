@@ -177,7 +177,7 @@ void main() {
     expect(find.text('Demo data'), findsOneWidget);
     expect(find.text('Scanning · 2'), findsOneWidget);
 
-    for (final title in ['Devices', 'Packets', 'Proximity', 'Decode', 'Settings', 'Overview']) {
+    for (final title in ['Devices', 'Packets', 'Proximity', 'Decode', 'Sessions', 'Settings', 'Overview']) {
       await tester.tap(find.text(title).first); // the rail comes first in the tree
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull, reason: title);
@@ -251,7 +251,7 @@ void main() {
 
   testWidgets('Soon items do not navigate', (tester) async {
     final c = await pumpApp(tester);
-    await tester.tap(find.text('Sessions'));
+    await tester.tap(find.text('Configure'));
     await tester.pump();
     expect(find.text('Overview'), findsWidgets);
     await finish(tester, c);

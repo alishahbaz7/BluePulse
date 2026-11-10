@@ -75,6 +75,11 @@ class SettingsPage extends StatelessWidget {
             Switch(value: s.showAllBeacons, onChanged: (v) => s.update((x) => x.showAllBeacons = v)),
             tip: 'Also list iBeacon and Eddystone devices from other makers',
           ),
+          row(
+            'Record every scan',
+            Switch(value: s.recordSessions, onChanged: (v) => s.update((x) => x.recordSessions = v)),
+            tip: 'Each live scan is saved as a session, from Start scan to Stop scan; see Sessions',
+          ),
         ]),
       ),
       const SizedBox(height: 14),
