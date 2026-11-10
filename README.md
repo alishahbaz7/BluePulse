@@ -6,7 +6,8 @@ for the beacon records Teltonika trackers send (Codec 8 / 8 Extended). Next: a B
 serial terminal.
 
 The plan, protocol reference, decisions and test cases are in [PLAN.md](PLAN.md). The protocol sources
-are the Teltonika wiki pages saved as PDF in this folder (BTSID1, BTSMP1, and the MESH pages).
+are the Teltonika wiki pages (BTSID1, BTSMP1, the MESH pages), saved as PDF in the project folder on
+the development computer only: reference and training material is git-ignored and never pushed.
 
 ## Layout
 

@@ -56,3 +56,12 @@ app.*.map.json
 
 # Personal VS Code settings (Flutter SDK path)
 /.vscode/settings.json
+
+# Reference and training material (vendor wiki pages, manuals, slides) stays on this computer only:
+# the repository is public and these are other people's documents.
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+/reference/
