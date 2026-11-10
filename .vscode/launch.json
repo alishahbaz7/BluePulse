@@ -20,6 +20,14 @@
       "request": "launch",
       "type": "dart",
       "program": "main.dart"
+    },
+    {
+      "name": "BluePulse - Windows, sends usage reports",
+      "request": "launch",
+      "type": "dart",
+      "program": "main.dart",
+      "deviceId": "windows",
+      "toolArgs": ["--dart-define=USAGE_URL=https://zjudpkovgkavarcjxmmp.supabase.co/rest/v1/rpc/usage_report"]
     }
   ]
 }
