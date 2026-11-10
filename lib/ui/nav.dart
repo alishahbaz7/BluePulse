@@ -106,7 +106,7 @@ const navItems = <NavItem>[
     id: PageId.settings,
     module: 'App',
     title: 'Settings',
-    tip: 'Theme, scanning source, signal smoothing and the distance model',
+    tip: 'Theme, scanning source, signal smoothing, the distance model, updates and usage reporting',
     icon: Icons.settings_outlined,
   ),
 ];

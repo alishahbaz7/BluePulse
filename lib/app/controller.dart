@@ -16,6 +16,12 @@ import '../update/transport.dart';
 import '../update/update_config.dart';
 import '../update/update_host.dart';
 import '../update/update_service.dart';
+import '../usage/usage_config.dart';
+import '../usage/usage_device.dart';
+import '../usage/usage_service.dart';
+import '../usage/usage_store.dart';
+import '../usage/usage_transport.dart';
+import 'scan_metrics.dart';
 import 'settings.dart';
 
 /// Live scanning exists on the platforms this app ships for. The web build is for demos and
@@ -34,9 +40,12 @@ class AppController extends ChangeNotifier {
     required this.demoScanner,
     this.version = '—',
     UpdateService? updates,
+    UsageService? usage,
   })  : _live = liveScanner,
-        updates = updates ?? UpdateService.disabled() {
+        updates = updates ?? UpdateService.disabled(),
+        usage = usage ?? UsageService.disabled() {
     this.updates.addListener(notifyListeners);
+    this.usage.addListener(notifyListeners);
     settings.addListener(_onSettings);
     // Pages depend on the controller alone, so registry and device-book updates reach them through it.
     registry.addListener(notifyListeners);
@@ -68,9 +77,31 @@ class AppController extends ChangeNotifier {
           ? null
           : (defaultTargetPlatform == TargetPlatform.windows ? WindowsBleScanner() : UniversalBleScanner()),
       demoScanner: DemoScanner(),
+      usage: _usageService(prefs, version),
     );
     unawaited(c.scanner.init());
     unawaited(c.updates.cleanup());
+    // Usage first, so the update check below is recorded in this start's session.
+    if (c.usage.enabled) {
+      c.usage.metrics = ScanMetrics(() => ScanSample(
+            scanning: c.scanning,
+            demo: c.isDemo,
+            bluetooth: c.status.radio.name,
+            devices: c.registry.devices.map((d) => d.mac),
+            totalPackets: c.registry.totalPackets,
+          ));
+      c.usage.watchUpdates(c.updates);
+      try {
+        await c.usage.start(
+          app: UpdateConfig.appName,
+          appVersion: version,
+          build: kDebugMode ? 'debug' : (kProfileMode ? 'profile' : 'release'),
+          facts: await readDeviceFacts(),
+        );
+      } catch (_) {
+        // Reporting never stops the app from starting.
+      }
+    }
     // Every start checks the release channel; development runs only when pointed at a test channel.
     if (!kDebugMode || UpdateConfig.manifestOverride.isNotEmpty) unawaited(c.updates.check());
     return c;
@@ -89,6 +120,20 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  static UsageService _usageService(SharedPreferences? prefs, String version) {
+    if (kIsWeb) return UsageService.disabled(disabledReason: 'Usage reporting applies to the Windows and Android apps');
+    if (!UsageConfig.configured) return UsageService.disabled(disabledReason: 'Usage reporting is not set in this build');
+    if (kDebugMode && !UsageConfig.passedAtBuild) {
+      return UsageService.disabled(disabledReason: 'Development runs do not report usage (pass USAGE_URL to test it)');
+    }
+    final url = Uri.parse(UsageConfig.url);
+    return UsageService(
+      store: prefs == null ? MemoryUsageStore() : PrefsUsageStore(prefs),
+      transport: HttpUsageTransport(url: url, key: UsageConfig.key, userAgent: '${UpdateConfig.appName}/$version'),
+      endpoint: url,
+    );
+  }
+
   final AppSettings settings;
   final DeviceRegistry registry;
 
@@ -100,6 +145,9 @@ class AppController extends ChangeNotifier {
 
   /// Release channel: check, download, install, restart.
   final UpdateService updates;
+
+  /// Who uses this copy and how: reported to the usage channel.
+  final UsageService usage;
   final BeaconScanner? _live;
   final BeaconScanner demoScanner;
   late ScanSource _source;
@@ -147,6 +195,9 @@ class AppController extends ChangeNotifier {
     settings.removeListener(_onSettings);
     registry.removeListener(notifyListeners);
     registry.book.removeListener(notifyListeners);
+    // Usage first: it listens to the update service.
+    usage.removeListener(notifyListeners);
+    usage.dispose();
     updates.removeListener(notifyListeners);
     updates.dispose();
     scanner.status.removeListener(notifyListeners);

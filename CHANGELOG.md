@@ -25,7 +25,20 @@ about them.
 - **Focus**: tick devices to give them every packet and up to ten screen refreshes a second; the rest
   fade and refresh every 2–10 s depending on how busy the radio is, while still being counted exactly.
   Opening a device's page focuses it for as long as the page is open. A packets-per-second column
-  makes the received rate visible.
+  makes the received rate visible. Out of focus, a device's whole advertising event is applied when
+  its turn comes, so an EYE BEACON in Eddystone mode (name and battery in the scan response) is still
+  recognised and listed.
+- **Device page**, for judging how well a beacon is heard:
+  - *Pings* — a ping is one advertising event (advertisement + scan response): count, average,
+    shortest, longest and last gap, jitter, and *Received %* against the advertising interval estimated
+    from the shortest common gap; a gap-over-time chart shows dropouts.
+  - One time window — 5, 10 or 15 min, in a bar that stays in view — for every chart and the pings.
+  - Every chart shows Now · Avg · Min · Max for the window.
+  - *Arrange*: order the charts, show or hide each, half or full width; kept per device type.
+  - *Received packets*: every packet from the device, live, with gap, decoded values and raw bytes
+    (the last 5,000 kept, also for devices out of focus). *Save log* writes a CSV (Excel-ready) of the
+    window or of everything kept — a save dialog on Windows, the share sheet on Android — and *Record*
+    writes each packet to a CSV while a long test runs.
 - **Pages**: Overview, Devices, Device detail with charts, Packets with every byte named, Proximity
   (tracker Near / Away / Lost thresholds), Decode (paste a tracker packet, AVL value or BLE packet),
   Settings. House utility look, dark and light, sidebar on the laptop and a drawer on the phone.
@@ -43,5 +56,11 @@ about them.
   APK, `latest.json` with checksums and the notes from this changelog. The Microsoft C++ runtime
   (`msvcp140`, `vcruntime140`, `vcruntime140_1`) goes inside each version folder, so a fresh,
   locked-down PC needs nothing installed — only the build machine needs Flutter and Visual Studio.
+- **Usage monitoring**, so the team knows who uses BluePulse and how: at the first start the app asks
+  your name — and greets you by it on the Overview page — then reports it with the Windows sign-in
+  and computer name (or the phone model), the version, each start (how long it was open, time
+  scanning, how many devices it heard, which pages were opened), updates and app errors. Starts made
+  offline are kept and sent later. Beacon addresses, packets and location are never reported.
+  Settings → *Usage reporting* shows what this copy reports as.
 - **Not yet**: on-air test with real devices (toolchains pending), Sessions / CSV export, Android
   background scanning, configuring devices over GATT.

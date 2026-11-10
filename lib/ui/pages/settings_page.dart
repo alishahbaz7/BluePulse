@@ -7,6 +7,7 @@ import '../../version.dart';
 import '../format.dart';
 import '../theme.dart';
 import '../update_ui.dart';
+import '../usage_ui.dart';
 import '../widgets/common.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -139,6 +140,8 @@ class SettingsPage extends StatelessWidget {
       ),
       const SizedBox(height: 14),
       const UpdatesCard(),
+      const SizedBox(height: 14),
+      const UsageCard(),
       const SizedBox(height: 14),
       PanelCard(
         title: 'About',

@@ -5,6 +5,7 @@ import 'package:bluepulse/app/settings.dart';
 import 'package:bluepulse/core/registry.dart';
 import 'package:bluepulse/scanner/scanner.dart';
 import 'package:bluepulse/update/update_service.dart';
+import 'package:bluepulse/usage/usage_service.dart';
 import 'package:eye_protocol/eye_protocol.dart';
 import 'package:flutter/foundation.dart';
 
@@ -40,7 +41,7 @@ class FakeScanner implements BeaconScanner {
   }
 }
 
-AppController testController({FakeScanner? scanner, UpdateService? updates, String version = '1.0.0'}) {
+AppController testController({FakeScanner? scanner, UpdateService? updates, UsageService? usage, String version = '1.0.0'}) {
   final settings = AppSettings(null, false);
   return AppController(
     settings: settings,
@@ -49,6 +50,7 @@ AppController testController({FakeScanner? scanner, UpdateService? updates, Stri
     demoScanner: scanner ?? FakeScanner(),
     version: version,
     updates: updates,
+    usage: usage,
   );
 }
 

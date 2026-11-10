@@ -22,6 +22,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:bluepulse/update/update_config.dart';
+import 'package:bluepulse/usage/usage_config.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
@@ -176,6 +177,11 @@ Future<void> main(List<String> argv) async {
   final notes = changelogSection(File('CHANGELOG.md').readAsStringSync(), version);
   final name = releaseName(version);
   stdout.writeln('Packaging $name for github.com/$repo');
+  // A copy released without the usage channel can never be monitored or controlled afterwards.
+  stdout.writeln(UsageConfig.configured
+      ? '  Usage reports go to ${Uri.parse(UsageConfig.url).host}'
+      : '  WARNING: usage reporting is not set (lib/usage/usage_config.dart): copies of this release '
+          'cannot be monitored or controlled, ever');
 
   if (argv.contains('--build')) {
     final define = repo == UpdateConfig.repo ? <String>[] : ['--dart-define=UPDATE_REPO=$repo'];

@@ -9,13 +9,18 @@ import 'theme.dart';
 import 'widgets/common.dart';
 
 /// Opens the update dialog; it follows the service through download, install and restart.
-Future<void> showUpdateDialog(BuildContext context) {
-  final u = AppScope.read(context).updates;
-  return showDialog<void>(
+Future<void> showUpdateDialog(BuildContext context) async {
+  final c = AppScope.read(context);
+  final u = c.updates;
+  await showDialog<void>(
     context: context,
     barrierDismissible: !u.required && !u.busy,
     builder: (_) => const _UpdateDialog(),
   );
+  // Closed with the update still on offer: *Later*, or the dialog dismissed.
+  if (u.stage == UpdateStage.available) {
+    c.usage.record('update_postponed', {'version': u.manifest?.version.toString()});
+  }
 }
 
 class _UpdateDialog extends StatelessWidget {

@@ -16,6 +16,7 @@ import 'pages/proximity_page.dart';
 import 'pages/settings_page.dart';
 import 'theme.dart';
 import 'update_ui.dart';
+import 'usage_ui.dart';
 import 'widgets/common.dart';
 
 /// Lets pages move between pages (open a device, go back to the list).
@@ -49,11 +50,25 @@ class _ShellState extends State<Shell> {
   late String? _mac = widget.initialMac;
   final _scaffold = GlobalKey<ScaffoldState>();
   UpdateService? _updates;
+  bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final u = AppScope.read(context).updates;
+    final c = AppScope.read(context);
+    if (!_started) {
+      _started = true;
+      c.usage.pageOpened(_page.name);
+      // The first start asks who is using the app before anything else is offered.
+      if (c.usage.needsName) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          await showIdentityDialog(context, required: true);
+          _onUpdates();
+        });
+      }
+    }
+    final u = c.updates;
     if (!identical(u, _updates)) {
       _updates?.removeListener(_onUpdates);
       _updates = u..addListener(_onUpdates);
@@ -71,6 +86,7 @@ class _ShellState extends State<Shell> {
   void _onUpdates() {
     final u = _updates;
     if (u == null || u.promptShown || u.stage != UpdateStage.available) return;
+    if (mounted && AppScope.read(context).usage.needsName) return; // offered once the name is given
     u.promptShown = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) showUpdateDialog(context);
@@ -79,6 +95,7 @@ class _ShellState extends State<Shell> {
 
   void _go(PageId page, {String? mac}) {
     if (navItem(page).soon) return;
+    if (page != _page) AppScope.read(context).usage.pageOpened(page.name);
     setState(() {
       _page = page;
       if (mac != null) _mac = mac;

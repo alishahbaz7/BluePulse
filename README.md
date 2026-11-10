@@ -24,6 +24,9 @@ lib/
   scanner/    BeaconScanner · UniversalBleScanner (live) · DemoScanner (simulated)
   core/       DeviceRegistry, EyeDevice, RSSI smoothing, proximity, distance
   ui/         theme tokens, nav definition, shell (rail + top bar), pages, widgets
+  update/     release channel: check, download, verify, install
+  usage/      usage reports (who uses it and how) and their offline queue
+backend/supabase/usage.sql   server side of usage reporting
 test/         core logic + widget tests
 ```
 
@@ -114,6 +117,24 @@ keyPassword=…
 ```
 
 Without it, release builds are debug-signed and the packaging tool will not publish an APK.
+
+## Usage monitoring
+
+Each copy reports who uses it and how to a Supabase project (PLAN.md §10b): the name asked at the
+first start (the Overview page then greets the person by it), Windows login and computer name or
+phone model, version, every start, updates and errors. The same server serves every app; each report
+names its app, and `backend/supabase/README.md` is the format for adding it to another app.
+
+The server is the Supabase project *BluePulse* (Mumbai); its address and publishable key are the
+defaults in `lib/usage/usage_config.dart`, and `dart run tool/usage_check.dart` checks it without
+storing anything. The key is public by design: it can write reports, never read them. Development
+runs (`run.ps1`, `flutter run`) report nothing unless `--dart-define=USAGE_URL=…` is passed. To move
+to another project or a self-hosted server: run `backend/supabase/usage.sql` there and change the two
+defaults (PLAN.md §10b *Setup*).
+
+**The user list:** Supabase → Table Editor → schema `usage` → `users`. Also `recent_sessions`,
+`daily`, `versions` and `activity`. To try another server: `--dart-define=USAGE_URL=…
+--dart-define=USAGE_KEY=…`.
 
 ## Conventions
 

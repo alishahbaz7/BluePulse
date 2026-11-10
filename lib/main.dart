@@ -13,6 +13,20 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final controller = await AppController.create();
 
+  // Errors nobody handled go into the usage record as well as the usual output.
+  final usage = controller.usage;
+  if (usage.enabled) {
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) {
+      previous?.call(details);
+      usage.recordError(details.exception, details.stack);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      usage.recordError(error, stack);
+      return false; // still reported the usual way
+    };
+  }
+
   // Web build only (demos and screenshots): `?theme=light&page=devices&mac=…&hex=…` opens a given view.
   final q = kIsWeb ? Uri.base.queryParameters : const <String, String>{};
   final theme = ThemeChoice.values.where((v) => v.name == q['theme']).firstOrNull;

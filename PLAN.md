@@ -18,6 +18,7 @@ Plan v1 · 09-11-2026
 | P2 | **Built, verified on demo data and tests** (26 app tests): scanners, registry, ADV + scan-response merge, repeats, interval, smoothing, not seen, proximity, distance. Real hardware pending. |
 | P3 | **Built**: shell (rail / top bar / drawer), Overview, Devices, Device detail, Packets, Proximity, Decode, Settings. Checked by screenshot in dark, light, folded rail and phone width (web build, demo data). |
 | **OTA** | **Built** (top priority, 09-11-2026): launcher, update check / download / verify / install / restart, Android APK install, release packaging. 27 update tests incl. end-to-end over real sockets with GitHub-style redirects; 4 launcher checks. Waiting for: the releases repository name, the Android signing key, and a real Windows build (§12). |
+| **Usage** | **Monitoring live, 10-11-2026** (§10b): Supabase project *BluePulse* (Mumbai) set up, `tool/usage_check.dart` READY, the app's key confirmed unable to read anything, and a release build on the development laptop delivered its first report. Built: each copy reports who uses it (name and team asked once), its version, every start (time open, time scanning, devices heard, pages opened), updates and app errors; starts made offline are kept and sent later. Server side `backend/supabase/usage.sql` checked on Postgres 16 (25 checks: the app's key can write reports and read nothing); 30 app tests; screens checked by screenshot (`test/visual/usage_screens_test.dart`); `tool/usage_check.dart` checks a server without storing anything. Development runs report only when `USAGE_URL` is passed. **Next: control** (block, version per group, features) — the four answers in §10b first. |
 | P4–P6 | Not started (Sessions, Android hardening, Configure). |
 
 ## 1. Decisions
@@ -40,6 +41,15 @@ Plan v1 · 09-11-2026
 | D14 | **Own native BLE scanner on Windows** (C++/WinRT plugin in `packages/bluepulse_ble_windows`); `universal_ble` stays for Android and the radio state | 09-11-2026 |
 | D15 | **Device tags** (own names) and **focus** (every packet + fast refresh for chosen devices, slow refresh for the rest, the open device focused while its page is open), kept on the computer | 09-11-2026 |
 | D16 | **Portable on Windows**: unzip and run, no installer, no admin (`asInvoker`), nothing to install on user PCs; keep the folder somewhere the user can write so updates can land | 09-11-2026 |
+| D17 | **Usage monitoring first, control next**, on one channel: each copy reports who uses it and how; later the answer to that report carries what the copy may do | 09-11-2026 |
+| D18 | Usage backend **Supabase** — open source, free tier, Mumbai region, self-hostable later. The app only POSTs one JSON document to one URL, so a self-hosted Supabase, PocketBase or our own server can replace it | 09-11-2026 |
+| D19 | **Only the name is asked, once, at the first start**, with one line saying what is reported, and the home page greets the person by it ("Hello, Name"); Windows login, computer name and phone model are read, not asked | 09-11-2026, name only 10-11-2026 |
+| D20 | **A ping is one advertising event** (advertisement + scan response, repeats folded); received % uses the 10th-percentile gap as the interval estimate | 10-11-2026 |
+| D21 | Device page: **one time window (5 / 10 / 15 min)** for all charts and pings; **Now · Avg · Min · Max** on every chart; **charts arranged by the user** (order, shown, half/full), kept per device type | 10-11-2026 |
+| D22 | **Received-packet log per device** (last 5,000, raw bytes), **Save log** as CSV (Windows save dialog, Android share sheet) and **Record** to CSV for long tests | 10-11-2026 |
+| D23 | **One usage server for every app**: each report names its `app`, the views split by it, and `backend/supabase/README.md` is the report format the other apps (InTouch, uCANdo, …) follow | 10-11-2026 |
+| D24 | **Each app's own counters go in a session's `metrics`** (an object under the app's names), never in new columns; the shared session fields are time open, pages opened and errors. The user list shows who, which app and version, when, how often and errors — no hours or device counts for now. Schema v3 | 10-11-2026 |
+| D25 | The way to add monitoring (and, next, control) to any app is the **`app-control` skill** (`~/.claude/skills/app-control`); its copy of `usage.sql` is the master, `backend/supabase/usage.sql` here follows it | 10-11-2026 |
 
 ## 2. Scope
 
@@ -217,6 +227,7 @@ Hibernated devices wake with any magnet (LED blinks).
 | Charts | hand-drawn with `CustomPainter` (house rule: no chart library) |
 | Settings | `shared_preferences` |
 | Sessions | CSV files in the app's data folder (SQLite only if replay needs it) |
+| Usage | one HTTPS POST to Supabase (Postgres); server side in `backend/supabase/usage.sql` |
 
 ```
 packages/eye_protocol/        pure Dart — no Flutter
@@ -231,6 +242,9 @@ lib/
   scanner/   BeaconScanner · UniversalBleScanner · DemoScanner (labelled, for no-hardware runs)
   core/      DeviceRegistry · smoothing · proximity · classification
   ui/        nav definition · shell (rail, top bar) · pages · widgets · theme
+  update/    release channel: check, download, verify, install
+  usage/     usage reports: install, sessions, events · offline outbox · sender
+backend/supabase/usage.sql   usage tables, the report function, the user-list views
 test/        core logic + widget tests (nav, empty states, theme)
 ```
 
@@ -397,6 +411,90 @@ Release: bump `pubspec.yaml` + a CHANGELOG section → `dart run tool/package_re
 --build` → publish `dist/*` as release `v<version>`. Settings live in the user profile,
 so versions share them.
 
+## 10b. Usage monitoring and control
+
+**State — live, 10-11-2026.** Phase 1 is built, tested and switched on: Supabase project
+*BluePulse* (`zjudpkovgkavarcjxmmp`, Mumbai, free plan), `backend/supabase/usage.sql` run, the
+address and publishable key are the defaults in `UsageConfig`, `tool/usage_check.dart` says READY,
+the key cannot read the `usage` schema (checked against the live API), and a release build on the
+development laptop delivered its first report. Every build from here carries it; development runs
+report only when `USAGE_URL` is passed. Schema **v3** (D24) is written and tested but the live
+project still runs **v2** until it is run in the SQL Editor — until then everything is stored except
+BluePulse's own `metrics`. Next: phase 2.
+
+**Why:** know who runs BluePulse, on which version, how often and how — then control it: block a copy
+or a person, hold or push a version per group, switch features per group. Only copies that carry the
+check-in can ever be monitored or controlled, so it ships in 1.0.0, the first release.
+
+### Phase 1 — monitoring (built, switched off)
+
+| Record | Fields | When |
+|---|---|---|
+| Install — one per copy | install ID (random, made at the first start, kept in the user profile so updated versions share it) · app name (`BluePulse`) · name (asked once) · Windows login (`DOMAIN\user`) and computer name · phone maker and model · platform, OS · app version · build · started from the launcher · time zone | with every report |
+| Session — one per start | start · last active · end (when closed normally) · time on screen · opens per page · errors · BluePulse's own `metrics`: time scanning live / demo, devices heard live (a count), packets heard live, Bluetooth state (`lib/app/scan_metrics.dart`) | measured every minute; sent every 5 min, on minimise and on close |
+| Event | `first_start` · `version_changed` (from → to: an update arrived) · `update_offered` / `update_postponed` / `update_started` / `update_installed` / `update_failed` / `update_check_failed` · `error` (message + top of the stack, 10 a session) | as they happen |
+
+Not reported: beacon addresses or IDs, packet contents, location, files.
+
+**Travel:** one HTTPS POST of `{install, sessions, events}` to `UsageConfig.url`, the key in `apikey`
+(`lib/usage/`). Reports wait in the settings store until the server has them — sessions by ID, the
+newest snapshot winning; up to 500 events and 100 sessions, oldest out first — so starts made offline
+still count. A report the server refuses outright (HTTP 400) is dropped so it cannot block the
+queue; any other failure keeps it. Web build: off. Debug runs keep their own install ID and report
+only when `USAGE_URL` is passed.
+
+**Server** (`backend/supabase/usage.sql`, run once in the SQL Editor; safe to run again): schema
+`usage`, not served by the API — tables `installs`, `sessions`, `events`. The app's key can call only
+`public.usage_report(install, sessions, events)`, which writes and never reads. A copy cannot
+overwrite another copy's session, an older snapshot never replaces a newer one, an event is stored
+once. The server serves every app (D23): each copy names its app, and the report format other apps
+follow is in `backend/supabase/README.md`. Views, times in IST:
+
+| View | Shows |
+|---|---|
+| `usage.apps` | one row per app: copies, seen in 7 / 30 days, starts in 7 days, newest version seen |
+| `usage.users` | **the user list**: app, name, version, last seen, first seen, launches (all / 7 days), errors, login, computer, phone, OS |
+| `usage.recent_sessions` | every start: app, who, version, minutes, closed normally, pages, errors, the app's `metrics` |
+| `usage.daily` | people and starts per day |
+| `usage.versions` | copies per version and platform, seen in the last 30 days |
+| `usage.activity` | updates, errors, first starts, version changes |
+
+**Setup, once** (done 10-11-2026; kept for a move to another project or a self-hosted server):
+1. supabase.com → New project, region **Mumbai (ap-south-1)**, free plan.
+2. SQL Editor → paste `backend/supabase/usage.sql` → Run.
+3. Project Settings → API keys: copy the project URL and the **publishable** key (a legacy *anon*
+   key also works).
+4. `lib/usage/usage_config.dart`: make them the defaults — `url` =
+   `<project URL>/rest/v1/rpc/usage_report`, `key` = the publishable key. Every build then carries
+   them; `package_release.dart` warns while they are missing.
+5. `dart run tool/usage_check.dart` → **READY** (it sends a report the server must refuse, so it
+   proves the address, the key and the SQL without storing anything; otherwise it says which is
+   wrong).
+6. Run the app → Settings → Usage reporting → *Send now*: *Last sent* shows the time and the copy
+   appears in `usage.users`.
+
+**See the list:** Supabase → Table Editor → schema `usage` → `users` (sort, filter, export CSV), or
+the SQL Editor.
+
+### Phase 2 — control (next)
+
+The same POST answers with this copy's policy; the app applies it and keeps the last one it got.
+
+| Control | How |
+|---|---|
+| Block | a status per install or per person: active / blocked + a message. Blocked → a full-window notice with the message; the attempt is still reported |
+| Version per group | each install in a ring (pilot / general); the answer names the version the ring may run and its files (GitHub `releases/download/v<version>/…`), in place of `latest.json` for that copy; one copy can be held at a version or required to reach one |
+| Features | per ring or install, features on / off (Decode, Packets, Sessions, Configure…); off → the rail item is hidden |
+| Admin | first by editing columns in Supabase; then an admin page |
+
+To decide before phase 2:
+1. New installs: usable at once (block later), or waiting for approval?
+2. Users: MapmyIndia staff only, or customers and partners too (consent wording, DPDP Act 2023)?
+3. Offline grace: days without a check-in before a copy stops working (7 proposed)?
+4. Enforcement lives in the app. Source and releases are public (D11), so a block stops the official
+   build, not someone who builds their own; real access control needs private releases behind a
+   login.
+
 ## 11. Risks
 
 | Risk | Mitigation |
@@ -407,6 +505,9 @@ so versions share them.
 | Android filters / throttling | rules in §5 |
 | Sensor field layout (🟡) wrong | confirm with the BTSMP1 page and a capture before P2 ends |
 | MAC is random on some firmware | key by beacon ID if the address changes between sessions |
+| A copy without the usage channel is unseen until it updates | it ships in 1.0.0, the first release; `package_release.dart` warns if `UsageConfig` is ever emptied |
+| A free Supabase project pauses after 7 days without requests | reports wait on each copy and go out once it is restored; daily use keeps it awake; paid tier or self-hosting when it matters |
+| The usage key ships in the app and the source is public | it can only call `usage_report` — write reports, never read them; fake reports are possible, acceptable for now; phase 2 can sign reports |
 
 ## 12. Development setup
 
@@ -429,3 +530,5 @@ Commands: `flutter pub get` · `flutter analyze` · `flutter test` · `dart test
    response.
 3. If tracker records should carry sensor values: the tracker's AVL ID list for EYE sensor
    temperature, humidity, movement and angle.
+4. **Supabase project** for usage monitoring — URL and publishable key (§10b *Setup*); and the four
+   answers under §10b *Phase 2* before control is built.

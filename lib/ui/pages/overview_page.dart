@@ -11,6 +11,7 @@ import '../widgets/charts.dart';
 import '../widgets/common.dart';
 import '../widgets/data_grid.dart';
 import '../widgets/device_name.dart';
+import '../usage_ui.dart';
 import 'devices_page.dart';
 import 'live_state.dart';
 
@@ -23,8 +24,15 @@ class OverviewPage extends StatelessWidget {
     final r = c.registry;
     final now = DateTime.now();
     final all = r.devices;
+    final name = greetingName(context);
     final empty = liveEmptyState(context, hasRows: all.isNotEmpty);
-    if (empty != null) return empty;
+    if (empty != null) {
+      if (name == null) return empty;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 0), child: Greeting(name)),
+        Expanded(child: empty),
+      ]);
+    }
 
     final notSeen = all.where((d) => d.isNotSeen(now, c.settings.notSeenMinSeconds)).toList();
     final inView = all.where((d) => !notSeen.contains(d)).toList();
@@ -46,6 +54,7 @@ class OverviewPage extends StatelessWidget {
     final strongest = [...inView]..sort((a, b) => (b.smoothed ?? -999).compareTo(a.smoothed ?? -999));
 
     return ListView(padding: const EdgeInsets.all(16), children: [
+      if (name != null) Greeting(name),
       ?liveErrorNotice(context),
       TileRow(tiles: [
         StatTile(label: 'In view', value: '${inView.length}', tone: Tone.ok, onTap: () => go(PageId.devices)),
