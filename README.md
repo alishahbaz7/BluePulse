@@ -116,12 +116,13 @@ prints the one-line equivalent.
 
 **Android signing:** every APK must carry the same release key, or phones refuse the update. The key
 was created once for 1.0.0 (`keytool -genkeypair -keystore bluepulse-release.jks -storetype PKCS12
--alias bluepulse -keyalg RSA -keysize 2048 -validity 10000`) and lives **outside the repo, backed
-up**, in `C:\Users\<you>\keys\` beside a copy of its `key.properties`. To build on another machine,
-copy both there and place the properties file as `android/key.properties` (git-ignored):
+-alias bluepulse -keyalg RSA -keysize 2048 -validity 10000`) and lives in this folder's `keys\`
+(git-ignored, never pushed) beside a copy of its properties, which the build reads as
+`android/key.properties` (git-ignored). To build on another machine, copy `keys\` with the project
+and copy `keys\bluepulse-key.properties` to `android\key.properties`:
 
 ```
-storeFile=C:/Users/<you>/keys/bluepulse-release.jks
+storeFile=../../keys/bluepulse-release.jks
 storePassword=…
 keyAlias=bluepulse
 keyPassword=…

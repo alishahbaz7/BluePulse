@@ -50,6 +50,7 @@ app.*.map.json
 # Release output and signing secrets
 /dist/
 /android/key.properties
+/keys/
 *.jks
 *.keystore
 
