@@ -242,7 +242,10 @@ Future<void> main(List<String> argv) async {
     for (final a in assets.values) p.join(out.path, a['file']! as String),
     p.join(out.path, 'latest.json'),
   ];
-  stdout.writeln('\nPublish (needs the GitHub CLI, signed in):');
+  stdout.writeln('\nPublish in the browser: https://github.com/$repo/releases/new');
+  stdout.writeln('  tag v$version, title "BluePulse $version", notes from ${p.join(out.path, 'notes.md')}, '
+      'attach ${files.map(p.basename).join(', ')}, publish as the latest release (not a pre-release)');
+  stdout.writeln('Or with the GitHub CLI, signed in:');
   stdout.writeln('  gh release create v$version ${files.join(' ')} '
       '--repo $repo --title "BluePulse $version" --notes-file ${p.join(out.path, 'notes.md')}');
 }

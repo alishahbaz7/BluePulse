@@ -56,11 +56,15 @@ about them.
   APK, `latest.json` with checksums and the notes from this changelog. The Microsoft C++ runtime
   (`msvcp140`, `vcruntime140`, `vcruntime140_1`) goes inside each version folder, so a fresh,
   locked-down PC needs nothing installed — only the build machine needs Flutter and Visual Studio.
+  The APK is signed with BluePulse's own release key, so every later version installs over it; a
+  phone holding an earlier test copy (development-signed) uninstalls that once.
 - **Usage monitoring**, so the team knows who uses BluePulse and how: at the first start the app asks
   your name — and greets you by it on the Overview page — then reports it with the Windows sign-in
   and computer name (or the phone model), the version, each start (how long it was open, time
   scanning, how many devices it heard, which pages were opened), updates and app errors. Starts made
   offline are kept and sent later. Beacon addresses, packets and location are never reported.
   Settings → *Usage reporting* shows what this copy reports as.
-- **Not yet**: on-air test with real devices (toolchains pending), Sessions / CSV export, Android
-  background scanning, configuring devices over GATT.
+- **Tested on air** with EYE BEACON and EYE SENSOR devices on a Windows 11 laptop and an Android phone
+  (moto g57 power).
+- **Not yet**: Sessions (saved scans to replay and compare), Android background scanning,
+  configuring devices over GATT, the BLE / Bluetooth Classic serial terminal.

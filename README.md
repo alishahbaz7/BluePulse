@@ -21,8 +21,11 @@ packages/eye_protocol/   pure-Dart decoders (no Flutter) + tests
   lib/src/avl_beacons.dart  AVL 385 and 10828 / 10829 / 10831
 lib/
   app/        settings (persisted), controller (scanner ↔ registry), AppScope
-  scanner/    BeaconScanner · UniversalBleScanner (live) · DemoScanner (simulated)
-  core/       DeviceRegistry, EyeDevice, RSSI smoothing, proximity, distance
+  scanner/    BeaconScanner · WindowsBleScanner (live, Windows) · UniversalBleScanner (live,
+              Android) · DemoScanner (simulated)
+  core/       DeviceRegistry, EyeDevice, DeviceBook (names, focus, chart layout), ping stats,
+              received-packet log, RSSI smoothing, proximity, distance
+packages/bluepulse_ble_windows/  BluePulse's own Windows BLE scanner (C++/WinRT): every packet, raw
   ui/         theme tokens, nav definition, shell (rail + top bar), pages, widgets
   update/     release channel: check, download, verify, install
   usage/      usage reports (who uses it and how) and their offline queue
@@ -104,19 +107,28 @@ Releases are published to the public repository **github.com/alishahbaz7/BluePul
 releases together), set once in `lib/update/update_config.dart`; the packaging tool reads it too.
 To try updates against a local server: `--dart-define=UPDATE_MANIFEST_URL=http://127.0.0.1:8000/latest.json`.
 
-**Android signing:** every APK must carry the same release key, or phones refuse the update. Create
-it once (needs a JDK: `keytool -genkey -v -keystore eye-release.jks -keyalg RSA -keysize 2048
--validity 10000 -alias eye`), keep it **outside the repo and backed up**, and point
-`android/key.properties` (git-ignored) at it:
+**Publishing a release** (in the browser, no tools needed): on github.com/alishahbaz7/BluePulse →
+*Releases* → *Draft a new release*, tag `v<version>` on the version's commit, title
+`BluePulse <version>`, paste `dist\notes.md`, attach `BluePulse-v<version>.zip`, `.apk` and
+`latest.json`, and publish it as the **latest** release (not a pre-release) — copies find updates
+through `releases/latest/download/latest.json`. With the GitHub CLI signed in, the packaging tool
+prints the one-line equivalent.
+
+**Android signing:** every APK must carry the same release key, or phones refuse the update. The key
+was created once for 1.0.0 (`keytool -genkeypair -keystore bluepulse-release.jks -storetype PKCS12
+-alias bluepulse -keyalg RSA -keysize 2048 -validity 10000`) and lives **outside the repo, backed
+up**, in `C:\Users\<you>\keys\` beside a copy of its `key.properties`. To build on another machine,
+copy both there and place the properties file as `android/key.properties` (git-ignored):
 
 ```
-storeFile=C:/Users/<you>/keys/eye-release.jks
+storeFile=C:/Users/<you>/keys/bluepulse-release.jks
 storePassword=…
-keyAlias=eye
+keyAlias=bluepulse
 keyPassword=…
 ```
 
-Without it, release builds are debug-signed and the packaging tool will not publish an APK.
+Without it, release builds are debug-signed and the packaging tool will not publish an APK. A phone
+holding a debug-signed test copy must uninstall it once before installing a release.
 
 ## Usage monitoring
 
