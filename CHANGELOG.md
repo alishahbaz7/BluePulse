@@ -33,6 +33,12 @@ Releases are named `BluePulse-v<version>`.
 - **A friendlier welcome**: the first-start question is now "Hi! May I have your name, please?",
   saying the name is used to greet you and improve BluePulse — and still where to see what is
   shared.
+- **Fixed — Android could not reach the internet.** The 1.0.0 APK was built without Android's
+  internet permission (Flutter's template grants it to development builds only, so every test run
+  had it), so on a phone the update check said "No connection to github.com" and usage reports
+  stayed queued. Phones on 1.0.0 therefore cannot update themselves: install 1.0.1 by hand once;
+  from then on updates arrive in the app. Reports queued on those phones are sent after the update.
+  A test now fails the build if the release manifest loses the permission. Windows was not affected.
 - Fixed: on a narrow phone the page's section name under the title could wrap and spill out of the
   top bar.
 

@@ -10,6 +10,11 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
+    <!-- Internet: the update check and download (GitHub) and usage reports (Supabase). Flutter's
+         template grants it only to debug and profile builds, so a release without this line can reach
+         nothing — 1.0.0 shipped that way (test/android_manifest_test.dart now guards it). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- In-app updates: hand a verified APK to the system installer (the user confirms). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- open_filex declares media/storage access for opening pictures; the app only opens its own APK
