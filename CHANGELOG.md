@@ -3,6 +3,10 @@
 The version is declared once, in `pubspec.yaml`; each version is worked on a branch of the same name.
 Releases are named `BluePulse-v<version>`.
 
+## 1.0.1
+
+In progress.
+
 ## 1.0.0
 
 First version: see the live state of Teltonika EYE BEACON (BTSID1) and EYE SENSOR (BTSMP1) devices
