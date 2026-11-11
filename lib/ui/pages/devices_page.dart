@@ -66,7 +66,7 @@ class _DevicesPageState extends State<DevicesPage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ?liveErrorNotice(context),
         if (pinned > 0 || c.sensorLog != null) ...[
-          _FocusBar(ticked: all.where((d) => book.pinned(d.mac)).toList(), interval: r.backgroundInterval(now)),
+          _FocusBar(ticked: all.where((d) => book.pinned(d.mac)).toList()),
         ],
         const SizedBox(height: 12),
         Expanded(
@@ -122,11 +122,10 @@ class _DevicesPageState extends State<DevicesPage> {
 /// refresh, the multi-device log (every packet from the ticked devices, as it arrives), and the way
 /// out of focus.
 class _FocusBar extends StatefulWidget {
-  const _FocusBar({required this.ticked, required this.interval});
+  const _FocusBar({required this.ticked});
 
   /// The devices ticked now, in list order.
   final List<EyeDevice> ticked;
-  final Duration interval;
 
   @override
   State<_FocusBar> createState() => _FocusBarState();
@@ -209,9 +208,9 @@ class _FocusBarState extends State<_FocusBar> {
             const SizedBox(width: 12),
             Flexible(
               child: HoldTip(
-                message: 'Pinned devices are redrawn with every packet; the rest are counted in full but redrawn less '
-                    'often — busier radios mean longer gaps',
-                child: Text('others every ${formatDuration(widget.interval)}',
+                message: 'Every device stays live — its values update with every packet. Pinned devices are also '
+                    'redrawn with every packet; the rest are redrawn once a second to keep a busy list smooth',
+                child: Text('redrawn fastest',
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: t.dim)),
               ),
             ),

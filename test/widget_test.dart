@@ -38,7 +38,7 @@ void feed(AppController c) {
 }
 
 void main() {
-  testWidgets('a pinned device goes to the top, gets the bar and the top-bar chip; nothing else fades', (tester) async {
+  testWidgets('a pinned device goes to the top and gets the bar, said once; nothing else fades', (tester) async {
     final c = await pumpApp(tester);
     feed(c);
     await tester.pump(const Duration(milliseconds: 300));
@@ -52,7 +52,7 @@ void main() {
     expect(c.book.focus.length, 1);
     expect(top('SNS_TEST01'), lessThan(top('ID1_ABCDEFG')), reason: 'pinned on top whatever the sort');
     expect(find.text('1 pinned'), findsOneWidget);
-    expect(find.text('Pinned · 1'), findsOneWidget);
+    expect(find.text('Pinned · 1'), findsNothing, reason: 'no top-bar chip repeating the Devices page');
     expect(find.byTooltip('Unpin'), findsOneWidget);
     expect(find.byWidgetPredicate((w) => w is Opacity && w.opacity < 1), findsNothing, reason: 'the rest stay readable');
 

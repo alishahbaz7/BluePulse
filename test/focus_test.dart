@@ -46,16 +46,16 @@ void main() {
     expect(r.totalPackets, 60);
   });
 
-  test('a device in focus gets every packet; the rest are counted but applied every 2 s', () {
+  test('every packet is applied for every device, pinned or not — values stay live', () {
     book.toggleFocus(a);
     feed(6);
     final fa = r.device(a)!, fb = r.device(b)!;
     expect(fa.temperatureHistory.length, 60, reason: 'in focus: every packet charted');
-    expect(fb.temperatureHistory.length, inInclusiveRange(3, 4), reason: 'out of focus: one every 2 s');
-    expect(fb.packets, 60, reason: 'out-of-focus packets are still counted exactly');
+    expect(fb.temperatureHistory.length, 60, reason: 'out of focus: still every packet — nothing waits its turn');
+    expect(fb.packets, 60, reason: 'every packet counted');
     expect(fb.packetsPerSecond(t0.add(const Duration(seconds: 6))), closeTo(10, 0.5));
     expect(r.receivedPackets, 120);
-    expect(r.totalPackets, lessThan(70), reason: 'only applied packets are logged');
+    expect(r.totalPackets, 120, reason: 'every packet applied and logged, focused or not');
   });
 
   test('out of focus, a scan response carrying the data is applied with its advertisement', () {
@@ -89,13 +89,31 @@ void main() {
     expect(book.fast(a), isTrue);
   });
 
-  test('a busy radio stretches the background interval', () {
-    expect(r.backgroundInterval(t0), const Duration(seconds: 2));
+  test('a pin kept for a device not heard now slows nothing; it counts again when the device is back', () {
+    const away = 'AA:00:00:00:00:09';
+    book.toggleFocus(away); // pinned in an earlier run, not in range today
+    feed(1);
+    expect(r.focusActive, isFalse, reason: 'nothing pinned is in the list');
+    expect(r.fast(a), isTrue);
+    expect(r.device(a)!.teltonika!.temperatureC, closeTo(20.09, 1e-9), reason: 'every packet applied');
+
+    r.ingest(event(away, sensorAdv(2500), at: t0.add(const Duration(seconds: 2))));
+    expect(r.focusActive, isTrue, reason: 'the pinned device is back, and pinned');
+    expect(r.fast(away), isTrue);
+    expect(r.fast(a), isFalse);
+
+    r.clear();
+    expect(r.focusActive, isFalse, reason: 'cleared from the list');
+    book.clearFocus();
+    expect(book.focus, isEmpty);
+  });
+
+  test('the packet rate reflects a busy radio', () {
+    expect(r.packetRate(t0), 0);
     for (var i = 0; i < 2000; i++) {
       r.ingest(event(a, sensorAdv(2000), at: t0.add(Duration(milliseconds: 5 * i))));
     }
     expect(r.packetRate(t0.add(const Duration(seconds: 10))), greaterThan(150));
-    expect(r.backgroundInterval(t0.add(const Duration(seconds: 10))), const Duration(seconds: 10));
   });
 
   group('tags', () {

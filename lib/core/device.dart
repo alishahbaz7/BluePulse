@@ -183,9 +183,6 @@ class EyeDevice {
     return _recent.length * 1000 / span;
   }
 
-  /// Counts a packet without decoding it — for devices out of focus between full updates.
-  void touch(DateTime time) => _count(time);
-
   void _count(DateTime time) {
     packets++;
     lastSeen = time;

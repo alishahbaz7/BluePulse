@@ -370,17 +370,8 @@ class _TopBar extends StatelessWidget {
 
     // One icon says what the radio is doing; the page says how many devices, once.
     final chips = <Widget>[
-      if (item.live) ...[
-        if (c.isDemo) _radioChip(context, c),
-        // A phone's bar has no room for it; the Devices page says how many are in focus.
-        if (c.book.focus.isNotEmpty && !phone)
-          StatusChip(
-            text: 'Pinned · ${c.book.focus.length}',
-            tone: Tone.accent,
-            detail: 'Pinned devices stay on top and refresh fastest',
-            onTap: () => Navigation.of(context).go(PageId.devices),
-          ),
-      ],
+      // Pinned devices are shown once, on the Devices page (their section and its bar).
+      if (item.live && c.isDemo) _radioChip(context, c),
     ];
 
     return Container(

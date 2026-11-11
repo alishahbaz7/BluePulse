@@ -5,7 +5,25 @@ Releases are named `BluePulse-v<version>`.
 
 ## 1.0.2
 
-In progress.
+- **A pin counts only while its device is in the list.** Pins are kept between runs, so a device
+  pinned in 1.0.0 that is not in range today stayed pinned: the top bar said *Pinned · 1* on every
+  page, the Devices page showed nothing pinned (and so no *Unpin all*), and — worse — focus was on,
+  so every device on screen was applied only every 2–10 s and the Packets page missed their
+  packets, for a pin nobody could see. Now focus is on only while a pinned device is in the list
+  (or a device's page is open); the pin waits, and counts again the moment that device is heard.
+  Logs, sessions and recordings were never affected: they get every packet either way.
+- **Every device stays live, like the EYE app.** Side by side on the same phone, the EYE app's
+  values moved the instant a packet arrived while BluePulse could sit frozen for seconds. The cause:
+  a device *out of focus* had its packets counted but its values left unchanged until its turn came
+  round — every 2 s on a quiet radio, up to 10 s on a busy one — so in a crowded room a beacon could
+  show the same reading for ten seconds while its packets kept pouring in. (With the pin above, one
+  stale pin froze *every* device that way.) Now every packet is decoded and applied for every device,
+  in focus or not, so the whole list is as current as the radio. Focus still matters, but only for
+  how often the screen is redrawn: a pinned device, or an open device's page, is redrawn with every
+  packet; the rest are redrawn once a second so a long list stays smooth. The Packets page, logs,
+  sessions and recordings always got every packet — now the screen keeps up with them.
+- **No *Pinned · N* chip in the top bar**: it repeated the Devices page, which shows the pinned
+  devices in their own section with their count and the bar to unpin them.
 
 ## 1.0.1
 

@@ -67,16 +67,37 @@ class PacketEntry {
 /// Every device heard this session, merged by MAC — or, for the BluePulse simulator, whose address
 /// changes (every burst from Windows), by the simulated device's ID ([simulatorKey]).
 ///
-/// Focus ([book]): with nothing in focus every packet is applied and the screen refreshes four times
-/// a second. With devices in focus, those get every packet and up to ten refreshes a second, while
-/// the rest are counted exactly but applied only every [backgroundInterval] — 2 s on a quiet radio,
-/// up to 10 s on a busy one — and refresh the screen once a second.
+/// Focus ([book]): every packet is applied for every device, so all values stay live — like the
+/// EYE app, nothing on screen waits for its turn. Focus only sets how often the screen is redrawn:
+/// a device in focus (pinned, or its page open) is redrawn with every packet, up to ten times a
+/// second; the rest are redrawn once a second so a busy list stays smooth. With nothing in focus the
+/// screen refreshes four times a second.
 class DeviceRegistry extends ChangeNotifier {
   DeviceRegistry(this.settings, {DeviceBook? book}) : book = book ?? DeviceBook(null) {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_devices.isNotEmpty) notifyListeners();
     });
+    this.book.addListener(_pinsChanged);
   }
+
+  /// Whether focus is on: a pinned device is in the list, or a device's page is open. A pin kept
+  /// from an earlier run for a device not heard now changes nothing — on 11-11-2026 one such pin,
+  /// from 1.0.0, held every device on screen at the background rate while none showed as pinned.
+  bool get focusActive {
+    if (book.temporaryFocus != null) return true;
+    if (_pinsDirty) {
+      _pinsHere = _devices.keys.any(book.pinned);
+      _pinsDirty = false;
+    }
+    return _pinsHere;
+  }
+
+  /// Every packet applied for this device: all of them while focus is off, else the focused ones.
+  bool fast(String key) => !focusActive || book.inFocus(key);
+
+  bool _pinsHere = false;
+  bool _pinsDirty = true;
+  void _pinsChanged() => _pinsDirty = true;
 
   final AppSettings settings;
   final DeviceBook book;
@@ -120,20 +141,13 @@ class DeviceRegistry extends ChangeNotifier {
     return n / 10;
   }
 
-  /// How often a device out of focus is fully updated: longer when the radio is busy.
-  Duration backgroundInterval(DateTime now) {
-    final rate = packetRate(now);
-    if (rate < 30) return const Duration(seconds: 2);
-    if (rate < 150) return const Duration(seconds: 5);
-    return const Duration(seconds: 10);
-  }
-
   void startSession() {
     sessionStart ??= DateTime.now();
   }
 
   void clear() {
     _devices.clear();
+    _pinsDirty = true;
     _smoothers.clear();
     _simulators.clear();
     packets.clear();
@@ -175,33 +189,21 @@ class DeviceRegistry extends ChangeNotifier {
       sim.merged = d.merged.merge(sim.merged);
       _devices.remove(d.mac);
       _smoothers.remove(d.mac);
+      _pinsDirty = true;
     }
   }
 
   void ingest(ScanEvent e) {
     final key = _keyOf(e);
     var d = _devices[key];
-    final fast = book.fast(key);
+    final fast = this.fast(key);
     if (d != null) {
+      // Every packet is decoded and applied, so a device's values never wait for its turn. Focus
+      // decides only how often the screen is redrawn (_schedule), not whether the data is current.
       _received++;
       final second = e.time.millisecondsSinceEpoch ~/ 1000;
       _perSecond[second] = (_perSecond[second] ?? 0) + 1;
       if (_perSecond.length > 30) _perSecond.removeWhere((k, _) => k < second - 15);
-      // Out of focus and updated recently: count it and log it, skip the decoding and the charts.
-      // The whole advertising event is applied when its turn comes — a scan response follows its
-      // advertisement by a few ms and may carry the name and the Teltonika data (EYE BEACON in
-      // Eddystone mode), so it must not be skipped in favour of the advertisement.
-      final since = e.time.difference(d.appliedEventStart);
-      final sameEvent = since.inMilliseconds >= 0 && since.inMilliseconds <= eventSpanMs;
-      if (!fast && !sameEvent && since < backgroundInterval(e.time)) {
-        final readingsBefore = d.readings;
-        d.touch(e.time);
-        d.lastAddress = e.deviceId;
-        _keep(d, e);
-        _countReading(d, readingsBefore, e.time);
-        _schedule(fast: false);
-        return;
-      }
     }
     final decoded = decodeAdvertisement(e.data);
     if (d == null) {
@@ -211,6 +213,7 @@ class DeviceRegistry extends ChangeNotifier {
       // ignored.
       if (!decoded.isTeltonika && !decoded.isBeacon && !eyeName && !simulated) return;
       d = _devices[key] = EyeDevice(key, firstSeen: e.time);
+      _pinsDirty = true; // a pinned device may just have come back
       if (simulated) {
         _simulators.add(key);
         _absorbStrays(d);
@@ -300,7 +303,7 @@ class DeviceRegistry extends ChangeNotifier {
   /// device out of focus. A sooner refresh replaces a later one already waiting.
   void _schedule({required bool fast}) {
     if (_disposed) return;
-    final delay = !book.focusActive
+    final delay = !focusActive
         ? const Duration(milliseconds: 250)
         : (fast ? const Duration(milliseconds: 100) : const Duration(seconds: 1));
     final due = DateTime.now().add(delay);
@@ -316,6 +319,7 @@ class DeviceRegistry extends ChangeNotifier {
 
   @override
   void dispose() {
+    book.removeListener(_pinsChanged);
     for (final r in _recorders.values) {
       r.stop();
     }
