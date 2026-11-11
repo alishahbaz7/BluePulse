@@ -3,6 +3,10 @@
 The version is declared once, in `pubspec.yaml`; each version is worked on a branch of the same name.
 Releases are named `BluePulse-v<version>`.
 
+## 1.0.2
+
+In progress.
+
 ## 1.0.1
 
 - **The Windows title bar follows BluePulse's theme**, not the system's: on a laptop set to light
