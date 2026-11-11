@@ -70,6 +70,10 @@ class UsageService extends ChangeNotifier {
   String? error;
   bool sending = false;
 
+  /// Sends that failed in a row; each one doubles the wait before the next try.
+  int failures = 0;
+  bool _again = false;
+
   /// The app's own counters; set by the app before [start].
   UsageMetrics? metrics;
 
@@ -150,7 +154,14 @@ class UsageService extends ChangeNotifier {
     _outbox.putSession(s);
     unawaited(_save());
     final last = _lastAttempt;
-    if (last == null || _now().difference(last) >= UsageConfig.sendEvery) unawaited(flush());
+    if (last == null || _now().difference(last) >= retryEvery) unawaited(flush());
+  }
+
+  /// The gap before the next send: [UsageConfig.sendEvery], doubled for each failure in a row, at
+  /// most [UsageConfig.retryAtMost].
+  Duration get retryEvery {
+    final d = UsageConfig.sendEvery * (1 << min(failures, 4));
+    return d > UsageConfig.retryAtMost ? UsageConfig.retryAtMost : d;
   }
 
   void _measure(SessionRecord s) {
@@ -202,15 +213,15 @@ class UsageService extends ChangeNotifier {
     record('error', {'message': message, if (top != null && top.isNotEmpty) 'stack': top});
   }
 
-  /// Saves the person's name and sends it.
+  /// Saves the person's name; it goes to the server in the background, so nobody waits for it.
   Future<void> setName(String name) async {
     final i = install;
     if (!enabled || i == null) return;
     final n = name.trim();
-    await store.write('name', n);
     install = i.withName(n);
+    await _write('name', n);
     _notify();
-    await flush();
+    unawaited(flush());
   }
 
   /// Follows the release channel and records offers, downloads, installs and failures.
@@ -241,41 +252,55 @@ class UsageService extends ChangeNotifier {
     }
   }
 
-  /// Sends everything waiting, in batches. A failure keeps it for the next try, except a report the
-  /// server refuses outright, which is dropped so it cannot block the rest.
+  /// Sends everything waiting, in batches. Silent and never in the way: it runs in the background,
+  /// gives up after [UsageConfig.sendTimeout] (or [timeout]), and whatever goes wrong — no network,
+  /// the server down, an answer that makes no sense — the reports stay on this device for the next
+  /// try. Only a report the server refuses outright is dropped, so it cannot block the rest. The
+  /// server ignores a report it already has, so sending one twice is harmless.
   Future<void> flush({Duration? timeout}) async {
     final i = install;
     final t = transport;
-    if (!enabled || i == null || t == null || sending) return;
+    if (!enabled || i == null || t == null) return;
+    if (sending) {
+      _again = true; // e.g. a name typed while the start's report is on its way: send once more after
+      return;
+    }
     sending = true;
+    _again = false;
     _lastAttempt = _now();
     var more = false;
     final sessions = Map.of(_outbox.sessions);
     final events = _outbox.events.take(UsageConfig.maxEventsPerSend).toList();
     try {
       final report = {'install': i.toJson(), 'sessions': sessions.values.toList(), 'events': events};
-      final sent = t.send(report);
-      await (timeout == null ? sent : sent.timeout(timeout));
+      await t.send(report).timeout(timeout ?? UsageConfig.sendTimeout);
       _outbox.acknowledge(sessions, events);
       lastSent = _now();
       error = null;
-      await store.write('lastSent', lastSent!.toUtc().toIso8601String());
+      failures = 0;
       more = _outbox.events.isNotEmpty && events.length == UsageConfig.maxEventsPerSend;
+      await _write('lastSent', lastSent!.toUtc().toIso8601String());
     } on UsageSendException catch (e) {
       if (e.rejected) {
         _outbox.acknowledge(sessions, events);
         error = '${e.message} (report dropped)';
+        failures = 0; // the server answered
       } else {
         error = e.message;
+        failures++;
       }
     } on TimeoutException {
-      error = 'Not sent in time; kept for the next start';
+      error = 'Not sent in time; kept for the next try';
+      failures++;
+    } catch (e) {
+      error = 'Not sent (${e.runtimeType}); kept for the next try';
+      failures++;
     } finally {
       sending = false;
       await _save();
       _notify();
     }
-    if (more) await flush(timeout: timeout);
+    if (more || (_again && failures == 0)) await flush(timeout: timeout);
   }
 
   /// Closes the session (the app is exiting) and sends it, waiting a few seconds at most.
@@ -317,9 +342,11 @@ class UsageService extends ChangeNotifier {
     }
   }
 
-  Future<void> _save() async {
+  Future<void> _save() => _write('outbox', _outbox.encode());
+
+  Future<void> _write(String key, String value) async {
     try {
-      await store.write('outbox', _outbox.encode());
+      await store.write(key, value);
     } catch (_) {
       // The settings store failing must never take the app down; reports then last for this run.
     }

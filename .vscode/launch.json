@@ -27,7 +27,26 @@
       "type": "dart",
       "program": "main.dart",
       "deviceId": "windows",
-      "toolArgs": ["--dart-define=USAGE_URL=https://zjudpkovgkavarcjxmmp.supabase.co/rest/v1/rpc/usage_report"]
+      "toolArgs": [
+        "--dart-define=USAGE_URL=https://zjudpkovgkavarcjxmmp.supabase.co/rest/v1/rpc/usage_report"
+      ]
+    },
+    {
+      "name": "BluePulse - moto phone (dev, beside the release copy)",
+      "request": "launch",
+      "type": "dart",
+      "program": "main.dart",
+      "deviceId": "ZN52262PT5"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "BluePulse - laptop + phone (dev)",
+      "configurations": [
+        "BluePulse - Windows (live Bluetooth)",
+        "BluePulse - moto phone (dev, beside the release copy)"
+      ],
+      "stopAll": true
     }
   ]
 }

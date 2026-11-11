@@ -5,6 +5,7 @@ import 'ad_structures.dart';
 import 'beacon_id.dart';
 import 'eddystone.dart';
 import 'ibeacon.dart';
+import 'simulator_tag.dart';
 import 'teltonika.dart';
 
 /// What a scanner hands over, in platform-neutral form.
@@ -126,12 +127,15 @@ class AdvertisementData {
 
 /// Everything the app reads out of one device's advertisement (+ scan response).
 class DecodedAdvertisement {
-  DecodedAdvertisement({this.name, this.iBeacon, this.eddystone, this.teltonika});
+  DecodedAdvertisement({this.name, this.iBeacon, this.eddystone, this.teltonika, this.simulatorId});
 
   final String? name;
   final IBeacon? iBeacon;
   final EddystoneFrame? eddystone;
   final TeltonikaData? teltonika;
+
+  /// Sent by the BluePulse simulator: the simulated device's ID ([simulatorKey]).
+  final int? simulatorId;
 
   BeaconId? get beaconId {
     if (iBeacon != null) return iBeacon!.id;
@@ -154,10 +158,12 @@ DecodedAdvertisement decodeAdvertisement(AdvertisementData ad) {
   final apple = ad.manufacturerData[appleCompanyId];
   final eddy = ad.serviceData16[eddystoneServiceUuid];
   final telt = ad.manufacturerData[teltonikaCompanyId];
+  final sim = ad.manufacturerData[simulatorCompanyId];
   return DecodedAdvertisement(
     name: ad.name,
     iBeacon: apple == null ? null : decodeIBeacon(apple),
     eddystone: eddy == null ? null : decodeEddystone(eddy),
     teltonika: telt == null ? null : decodeTeltonika(telt),
+    simulatorId: sim == null ? null : decodeSimulatorTag(sim),
   );
 }

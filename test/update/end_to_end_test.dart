@@ -19,9 +19,13 @@ void main() {
   late HttpServer server;
   late Map<String, List<int>> served;
 
+  /// Files whose next answer stops halfway and drops the connection, as a flaky network does.
+  late Set<String> cut;
+
   setUp(() async {
     tmp = tempDir('e2e');
     served = {};
+    cut = {};
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((req) async {
       final path = req.uri.path;
@@ -32,6 +36,14 @@ void main() {
         return;
       }
       final bytes = served[p.basename(path)];
+      if (bytes != null && cut.remove(p.basename(path))) {
+        req.response.contentLength = bytes.length;
+        final socket = await req.response.detachSocket();
+        socket.add(bytes.sublist(0, bytes.length ~/ 2));
+        await socket.flush();
+        socket.destroy();
+        return;
+      }
       if (bytes == null) {
         req.response.statusCode = HttpStatus.notFound;
       } else {
@@ -116,6 +128,43 @@ void main() {
     expect(s.stage, UpdateStage.failed);
     expect(s.error, contains('checksum'));
     expect(layout.installed().map((v) => '${v.version}'), ['1.0.0']);
+  });
+
+  test('a connection dropped halfway — while checking or downloading — fails quietly and the next try works', () async {
+    final build = fakeFlutterBuild(tmp, '1.1.0');
+    final launcher = File(p.join(tmp.path, 'launcher.exe'))..writeAsStringSync('launcher v1');
+    final zip = release.buildWindowsZip(flutterBuild: build, launcher: launcher, version: '1.1.0');
+    served['BluePulse-v1.1.0.zip'] = zip;
+    served['latest.json'] = utf8.encode(release.buildManifest(
+      version: '1.1.0',
+      notes: '',
+      assets: {'windows': release.asset('BluePulse-v1.1.0.zip', zip, null, '1.1.0')},
+    ));
+    cut.addAll(['latest.json', 'BluePulse-v1.1.0.zip']);
+
+    final layout = fakeInstall(tmp, ['1.0.0'], current: '1.0.0');
+    final s = UpdateService(
+      current: SemVer.parse('1.0.0'),
+      host: TestHost(layout),
+      transport: HttpUpdateTransport(userAgent: 'test'),
+      manifestUrl: Uri.parse('http://127.0.0.1:${server.port}/acme/eye/releases/latest/download/latest.json'),
+    );
+
+    await s.check();
+    expect(s.stage, UpdateStage.failed, reason: 'latest.json cut halfway');
+    expect(s.busy, isFalse);
+    await s.check();
+    expect(s.stage, UpdateStage.available, reason: s.error);
+
+    await s.downloadAndInstall();
+    expect(s.stage, UpdateStage.failed, reason: 'the zip cut halfway');
+    expect(s.error, contains('was lost'));
+    expect(layout.installed().map((v) => '${v.version}'), ['1.0.0'], reason: 'the running version untouched');
+    expect(layout.stagingDir.existsSync() ? layout.stagingDir.listSync() : const [], isEmpty, reason: 'no half file left');
+
+    await s.downloadAndInstall();
+    expect(s.stage, UpdateStage.ready, reason: s.error);
+    expect(layout.installed().first.version, const SemVer(1, 1, 0));
   });
 
   test('the C++ runtime goes beside the program, once', () {

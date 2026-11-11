@@ -20,4 +20,14 @@ void main() {
       expect(declares(p), isTrue, reason: p);
     }
   });
+
+  test('the scan keeps running out of sight: a foreground service of type connectedDevice, and its notification', () {
+    final plugin = File('packages/bluepulse_ble_android/android/src/main/AndroidManifest.xml').readAsStringSync();
+    for (final p in ['FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_CONNECTED_DEVICE', 'POST_NOTIFICATIONS']) {
+      expect(plugin, contains('android.permission.$p'), reason: p);
+    }
+    expect(RegExp(r'<service[^>]*ScanKeepAliveService[^>]*foregroundServiceType="connectedDevice"').hasMatch(plugin),
+        isTrue,
+        reason: 'Android 14 refuses a foreground service without its declared type');
+  });
 }

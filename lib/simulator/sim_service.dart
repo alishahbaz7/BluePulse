@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'advertiser.dart';
 import 'sim_model.dart';
+import '../core/error_log.dart';
 
 enum SimState { stopped, starting, transmitting, failed }
 
@@ -20,6 +21,9 @@ enum SimState { stopped, starting, transmitting, failed }
 class SimulatorService extends ChangeNotifier {
   SimulatorService({required this.advertiser, this.prefs, Random? random}) : _rng = random ?? Random() {
     settings = _load();
+    // Saved at once, so what a new version adds with a value made up on the spot (the simulator ID)
+    // is the same at the next start, not only after the first change.
+    unawaited(prefs?.setString(_key, jsonEncode(settings.toJson())));
     values = SimValues.from(settings);
     _errorSub = advertiser.errors.listen((e) {
       error = e;
@@ -61,21 +65,34 @@ class SimulatorService extends ChangeNotifier {
   bool get running => state == SimState.transmitting || state == SimState.starting;
   bool get _bursts => !(capabilities?.exactInterval ?? false);
 
-  /// The burst Windows sends every interval: long enough for one or two advertisements.
-  Duration get burstLength => Duration(milliseconds: min(200, max(60, settings.intervalMs ~/ 2)));
+  /// The burst Windows sends every interval: half the interval, at most 500 ms. Windows is on air
+  /// ~20 ms after Start (measured, 10-11-2026), but at 200 ms a burst held only one or two
+  /// advertisements and a phone missed a third of them; a receiver still folds anything within
+  /// 600 ms (readingGapMs, core/device.dart) into one ping, so 500 ms is as long as a burst can be.
+  Duration get burstLength => Duration(milliseconds: min(500, max(60, settings.intervalMs ~/ 2)));
+
+  /// The packets for the current settings and values, as this device's radio can send them.
+  SimPayload build() => buildPayload(
+        settings,
+        values,
+        sendsName: capabilities?.name ?? true,
+        reservedBytes: capabilities?.reservedBytes ?? 0,
+      );
 
   SimSettings _load() {
     try {
       final raw = prefs?.getString(_key);
       if (raw != null) return SimSettings.fromJson(jsonDecode(raw) as Map<String, Object?>);
-    } catch (_) {
+    } catch (e) {
       // damaged: start from the defaults
+      errorLog.warn('simulator', 'Saved simulator settings were damaged; starting from the defaults', error: e);
     }
     return SimSettings();
   }
 
   Future<void> refreshCapabilities() async {
     capabilities = await advertiser.capabilities();
+    if (!running) payload = build();
     notifyListeners();
   }
 
@@ -100,7 +117,7 @@ class SimulatorService extends ChangeNotifier {
     if (!settings.autoMagnet) values.magnetDetected = fresh.magnetDetected;
     notifyListeners();
     if (!running) {
-      payload = buildPayload(settings, values);
+      payload = build();
       return;
     }
     if (jsonEncode(_radioPart(settings)) != before) {
@@ -119,10 +136,13 @@ class SimulatorService extends ChangeNotifier {
         'txPower': s.txPower.name,
         'sensorPacket': s.sensorPacket.name,
         'beaconFrame': s.beaconFrame.name,
+        'simTag': s.simTag,
       };
 
   Future<void> start() async {
-    await _halt();
+    // Android's start replaces a running set itself and keeps the simulated name; stopping first
+    // would give the phone its own name back only to rename it again at once (which raced).
+    await _halt(radio: !(capabilities?.exactInterval ?? false));
     error = null;
     state = SimState.starting;
     notifyListeners();
@@ -132,7 +152,7 @@ class SimulatorService extends ChangeNotifier {
       if (!caps.permitted && !await advertiser.requestPermissions()) {
         throw StateError('Bluetooth advertise permission was refused');
       }
-      final p = payload = buildPayload(settings, values);
+      final p = payload = build();
       final problem = p.problem;
       if (problem != null) throw StateError(problem);
       startedAt = DateTime.now();
@@ -156,6 +176,7 @@ class SimulatorService extends ChangeNotifier {
       await _halt();
       state = SimState.failed;
       error = txFailure(e is StateError ? e.message : e);
+      errorLog.warn('simulator', 'Transmitting did not start', error: error);
     }
     notifyListeners();
   }
@@ -166,12 +187,13 @@ class SimulatorService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _halt() async {
+  /// Stops the timers and, unless a start replaces it at once ([radio] false), the transmission.
+  Future<void> _halt({bool radio = true}) async {
     _changeTimer?.cancel();
     _burstTimer?.cancel();
     _burstEnd?.cancel();
     _changeTimer = _burstTimer = _burstEnd = null;
-    if (state != SimState.stopped) {
+    if (radio && state != SimState.stopped) {
       try {
         await advertiser.stop();
       } catch (_) {
@@ -194,20 +216,21 @@ class SimulatorService extends ChangeNotifier {
 
   /// Puts the current values on air.
   Future<void> _send() async {
-    final p = payload = buildPayload(settings, values);
+    final p = payload = build();
     notifyListeners();
     if (_bursts || state != SimState.transmitting) return; // the next burst carries them
     try {
       await advertiser.update(adv: p.adv, scanResponse: p.scanResponse);
     } catch (e) {
       error = txFailure(e);
+      errorLog.warn('simulator', 'New values were not put on air', error: error);
       notifyListeners();
     }
   }
 
   /// Windows: advertise for [burstLength], then fall silent until the next interval.
   Future<void> _burst() async {
-    final p = payload ?? buildPayload(settings, values);
+    final p = payload ?? build();
     final packet = _burstScanResponse && p.scanResponse != null ? p.scanResponse! : p.adv;
     _burstScanResponse = !_burstScanResponse;
     try {
@@ -221,6 +244,7 @@ class SimulatorService extends ChangeNotifier {
       _burstEnd = Timer(burstLength, () => unawaited(advertiser.stop()));
     } catch (e) {
       error = txFailure(e is StateError ? e.message : e);
+      errorLog.warn('simulator', 'A burst was not sent', error: error);
     }
     notifyListeners();
   }

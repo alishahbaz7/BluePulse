@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/controller.dart';
 import '../../core/device.dart';
-import '../../core/signal.dart';
+import '../../core/registry.dart';
 import '../format.dart';
 import '../nav.dart';
 import '../shell.dart';
@@ -10,10 +10,12 @@ import '../theme.dart';
 import '../widgets/charts.dart';
 import '../widgets/common.dart';
 import '../widgets/data_grid.dart';
+import '../widgets/device_card.dart';
 import '../widgets/device_name.dart';
+import '../widgets/device_table.dart';
 import '../usage_ui.dart';
-import 'devices_page.dart';
 import 'live_state.dart';
+import '../widgets/device_pills.dart';
 
 class OverviewPage extends StatelessWidget {
   const OverviewPage({super.key});
@@ -36,8 +38,6 @@ class OverviewPage extends StatelessWidget {
 
     final notSeen = all.where((d) => d.isNotSeen(now, c.settings.notSeenMinSeconds)).toList();
     final inView = all.where((d) => !notSeen.contains(d)).toList();
-    final beacons = inView.where((d) => d.model == DeviceModel.eyeBeacon).length;
-    final sensors = inView.where((d) => d.model == DeviceModel.eyeSensor).length;
     final low = all.where((d) => d.lowBattery).toList();
     final perMinute = r.readingsPerMinute(now, 30);
     final lastFull = perMinute.length >= 2 ? perMinute[perMinute.length - 2] : 0;
@@ -51,29 +51,66 @@ class OverviewPage extends StatelessWidget {
           expand: expand,
           child: BucketChart(values: perMinute, end: now),
         );
-    final strongest = [...inView]..sort((a, b) => (b.smoothed ?? -999).compareTo(a.smoothed ?? -999));
+    final strongest = [...inView]..sort((a, b) => (b.rssi ?? -999).compareTo(a.rssi ?? -999));
+
+    // A phone shows what is there and what is wrong with it: no throughput figures, and the
+    // attention list after the devices.
+    final phone = isPhone(context);
+    final tiles = TileRow(tiles: [
+      StatTile(
+        label: 'In view',
+        value: '${inView.length}',
+        tone: Tone.ok,
+        icon: Icons.sensors,
+        onTap: () => go(PageId.devices),
+      ),
+      StatTile(
+        label: 'Not seen',
+        value: '${notSeen.length}',
+        tone: Tone.muted,
+        icon: Icons.visibility_off_outlined,
+        tip: 'Silent for three advertising intervals, or the minimum set in Settings',
+      ),
+      if (!phone)
+        StatTile(
+          label: 'Readings / min',
+          value: '$lastFull',
+          icon: Icons.speed,
+          tip: 'Advertising events in the last full minute',
+        ),
+    ]);
+    final strongestCard = PanelCard(
+      title: 'Strongest signals',
+      padding: EdgeInsets.zero,
+      actions: [
+        if (!phone) const DeviceViewToggle(),
+        TextButton(onPressed: () => go(PageId.devices), child: const Text('All devices ›')),
+      ],
+      child: showTiles(context)
+          ? CardRows(
+              shrinkWrap: true,
+              count: strongest.take(8).length,
+              card: (i, stripe) =>
+                  DeviceCard(device: strongest[i], now: now, stripe: stripe, onTap: () => go(PageId.deviceDetail, mac: strongest[i].mac)),
+            )
+          : _strongestGrid(strongest, r, now, go),
+    );
+    if (phone) {
+      return ListView(padding: const EdgeInsets.all(12), children: [
+        if (name != null) Greeting(name),
+        ?liveErrorNotice(context),
+        tiles,
+        const SizedBox(height: 14),
+        strongestCard,
+        const SizedBox(height: 14),
+        attention(),
+      ]);
+    }
 
     return ListView(padding: const EdgeInsets.all(16), children: [
       if (name != null) Greeting(name),
       ?liveErrorNotice(context),
-      TileRow(tiles: [
-        StatTile(label: 'In view', value: '${inView.length}', tone: Tone.ok, onTap: () => go(PageId.devices)),
-        StatTile(label: 'EYE beacons', value: '$beacons', tip: 'BTSID1 devices in view'),
-        StatTile(label: 'EYE sensors', value: '$sensors', tip: 'BTSMP1 devices in view'),
-        StatTile(
-          label: 'Low battery',
-          value: '${low.length}',
-          tone: low.isEmpty ? Tone.neutral : Tone.warn,
-          tip: 'Devices whose last packet set the low-battery flag',
-        ),
-        StatTile(
-          label: 'Not seen',
-          value: '${notSeen.length}',
-          tone: Tone.muted,
-          tip: 'Silent for three advertising intervals, or the minimum set in Settings',
-        ),
-        StatTile(label: 'Readings / min', value: '$lastFull', tip: 'Advertising events in the last full minute'),
-      ]),
+      tiles,
       const SizedBox(height: 14),
       LayoutBuilder(builder: (context, box) {
         if (box.maxWidth < 900) {
@@ -89,12 +126,12 @@ class OverviewPage extends StatelessWidget {
         );
       }),
       const SizedBox(height: 14),
-      PanelCard(
-        title: 'Strongest signals',
-        count: '${strongest.length}',
-        padding: EdgeInsets.zero,
-        actions: [TextButton(onPressed: () => go(PageId.devices), child: const Text('All devices ›'))],
-        child: DataGrid<EyeDevice>(
+      strongestCard,
+    ]);
+  }
+
+  Widget _strongestGrid(List<EyeDevice> strongest, DeviceRegistry r, DateTime now, void Function(PageId, {String? mac}) go) {
+    return DataGrid<EyeDevice>(
           rows: strongest.take(8).toList(),
           shrinkWrap: true,
           onTap: (d) => go(PageId.deviceDetail, mac: d.mac),
@@ -103,10 +140,10 @@ class OverviewPage extends StatelessWidget {
             GridColumn(label: 'MAC', width: 150, cell: (ctx, d) => Text(d.mac, style: monoStyle(ctx))),
             GridColumn(label: 'Model', width: 130, cell: (_, d) => ModelPill(d.model)),
             GridColumn(
-              label: 'Smoothed',
+              label: 'RSSI',
               width: 96,
               numeric: true,
-              cell: (_, d) => Text(d.smoothed == null ? '—' : '${d.smoothed!.round()} dBm'),
+              cell: (_, d) => Text(d.rssi == null ? '—' : '${d.rssi} dBm'),
             ),
             GridColumn(label: 'Proximity', width: 100, cell: (_, d) => ProximityPill(r.proximityOf(d, now))),
             GridColumn(
@@ -117,9 +154,7 @@ class OverviewPage extends StatelessWidget {
             ),
             GridColumn(label: 'Last seen', width: 100, fill: true, cell: (_, d) => Text(formatAgo(d.lastSeen, now))),
           ],
-        ),
-      ),
-    ]);
+        );
   }
 }
 
@@ -182,20 +217,4 @@ class _Attention extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Re-exported for pages that show a proximity state.
-class ProximityPill extends StatelessWidget {
-  const ProximityPill(this.p, {super.key});
-  final Proximity p;
-
-  @override
-  Widget build(BuildContext context) => Pill(
-        p.label,
-        tone: switch (p) {
-          Proximity.near => Tone.ok,
-          Proximity.away => Tone.warn,
-          Proximity.lost => Tone.muted,
-        },
-      );
 }

@@ -48,7 +48,8 @@ class _SimulatorPageState extends State<SimulatorPage> {
     final caps = sim.capabilities;
     final t = context.tokens;
     final now = DateTime.now();
-    final payload = sim.payload ?? buildPayload(s, sim.values);
+    final payload = sim.payload ?? sim.build();
+    final (findAs, findTip) = _findAs(payload, s);
 
     final (stateText, stateTone) = switch (sim.state) {
       SimState.transmitting => ('Transmitting', Tone.ok),
@@ -58,27 +59,38 @@ class _SimulatorPageState extends State<SimulatorPage> {
     };
     final bursts = caps != null && caps.supported && !caps.exactInterval;
 
+    // The ID a receiver lists this device by is what people read off this page: it gets a whole line
+    // where five tiles would cut it short.
+    final receiver =
+        StatTile(label: 'Receiver', value: findAs ?? '—', tone: findAs == null ? Tone.warn : Tone.neutral, tip: findTip);
     return ListView(padding: const EdgeInsets.all(16), children: [
-      TileRow(minWidth: 150, tiles: [
-        StatTile(label: 'State', value: stateText, tone: stateTone),
-        StatTile(
-          label: 'Interval',
-          value: formatInterval(s.intervalMs),
-          tip: bursts ? 'A short burst every interval: Windows sets its own advertising rate' : 'Kept by the radio',
-        ),
-        StatTile(
-          label: 'Running',
-          value: sim.running && sim.startedAt != null ? formatDuration(now.difference(sim.startedAt!)) : '—',
-          secondary: sim.running ? '${formatCount(bursts ? sim.bursts : sim.expectedEvents(now))} sent' : null,
-          tip: bursts ? 'Bursts sent' : 'Advertisements expected on air at this interval',
-        ),
-        StatTile(
-          label: 'Changes',
-          value: formatCount(sim.changes),
-          secondary: _changeLabel(s),
-          tip: 'Times the values changed and went on air',
-        ),
-      ]),
+      LayoutBuilder(builder: (context, c) {
+        final together = c.maxWidth >= 1040;
+        return Column(children: [
+          TileRow(minWidth: 150, tiles: [
+            StatTile(label: 'State', value: stateText, tone: stateTone),
+            StatTile(
+              label: 'Interval',
+              value: formatInterval(s.intervalMs),
+              tip: bursts ? 'A short burst every interval: Windows sets its own advertising rate' : 'Kept by the radio',
+            ),
+            StatTile(
+              label: 'Running',
+              value: sim.running && sim.startedAt != null ? formatDuration(now.difference(sim.startedAt!)) : '—',
+              secondary: sim.running ? '${formatCount(bursts ? sim.bursts : sim.expectedEvents(now))} sent' : null,
+              tip: bursts ? 'Bursts sent' : 'Advertisements expected on air at this interval',
+            ),
+            StatTile(
+              label: 'Changes',
+              value: formatCount(sim.changes),
+              secondary: _changeLabel(s),
+              tip: 'Times the values changed and went on air',
+            ),
+            if (together) receiver,
+          ]),
+          if (!together) ...[const SizedBox(height: 10), SizedBox(width: double.infinity, child: receiver)],
+        ]);
+      }),
       if (caps != null && !caps.supported) ...[
         const SizedBox(height: 12),
         Notice(caps.reason ?? 'This device cannot transmit.', tone: Tone.warn),
@@ -89,7 +101,18 @@ class _SimulatorPageState extends State<SimulatorPage> {
       ],
       if (bursts) ...[
         const SizedBox(height: 12),
-        const Notice('Windows: one short burst every interval; no name, and no scan response.', tone: Tone.warn),
+        const Notice(
+          'Windows: one short burst every interval, each from a new random address; no name, and no scan response.',
+          tone: Tone.warn,
+        ),
+      ],
+      if (findAs == null) ...[
+        const SizedBox(height: 12),
+        const Notice(
+          'Nothing in these packets tells this device apart, and its address is random: turn the BluePulse tag on '
+          'to find it on a receiver.',
+          tone: Tone.warn,
+        ),
       ],
       const SizedBox(height: 14),
       PanelCard(
@@ -123,6 +146,28 @@ class _SimulatorPageState extends State<SimulatorPage> {
         child: _OnAir(payload: payload, settings: s, nameOnAir: sim.nameOnAir, t: t),
       ),
     ]);
+  }
+
+  /// What to look for on a receiver: the simulator ID, the name, or the beacon ID — or null when
+  /// nothing in the packets tells this device apart. With the tip that explains it.
+  static (String?, String) _findAs(SimPayload p, SimSettings s) {
+    if (p.simulatorId != null) {
+      return (
+        simulatorKey(p.simulatorId!),
+        'BluePulse on the receiving phone or PC lists this device under this ID, in place of a MAC; '
+            'search the Devices page for SIM. Other receivers see a random address that changes'
+      );
+    }
+    final name = p.adv.name ?? p.scanResponse?.name;
+    if (name != null) return (name, 'The advertised name: search for it on the receiver. The address is random');
+    final id = simBeaconId(s);
+    if (id != null) {
+      return (
+        id.isEddystone ? id.instanceHex : '${id.major} · ${id.minor}',
+        'The beacon ID (${id.kindLabel}): search for it on the receiver. The address is random'
+      );
+    }
+    return (null, 'Nothing identifies this device: its address is random and it sends no name or ID');
   }
 
   static String _changeLabel(SimSettings s) => switch (s.changeEverySec) {
@@ -226,8 +271,11 @@ class _TransmitterForm extends StatelessWidget {
             onSubmitted: (v) => sim.update((x) => x.name = v.trim()),
           ),
         ),
-        tip: "Android advertises the phone's Bluetooth name, so it is renamed to this while transmitting "
-            'and given its old name back on Stop',
+        tip: nameAllowed
+            ? "Android advertises the phone's Bluetooth name, so it is renamed to this while transmitting "
+                'and given its old name back on Stop'
+            : 'Windows does not let apps advertise a name. BluePulse receivers list this device by the ID '
+                'its tag carries instead',
       ),
       _Row(
         'Interval',
@@ -249,6 +297,13 @@ class _TransmitterForm extends StatelessWidget {
           ),
           tip: 'Ultra low −21 dBm, low −15, medium −7, high +1; Windows takes it as a preference',
         ),
+      _Row(
+        'BluePulse tag',
+        Switch(value: s.simTag, onChanged: (v) => sim.update((x) => x.simTag = v)),
+        tip: 'Ten extra bytes (company 0xFFFF, kept for tests) wherever a packet has room. BluePulse receivers use '
+            'them to list this as one device, SIM-…, although its address keeps changing. Off: only what a real '
+            'device sends',
+      ),
       _Row(
         'Values change',
         DropdownButton<int>(
@@ -489,6 +544,7 @@ class _OnAir extends StatelessWidget {
       if (tel?.pitch != null) ('Pitch / roll', '${tel!.pitch}° / ${tel.roll}°'),
       if (tel != null && tel.magnetPresent) ('Magnet', tel.magnetDetected == true ? 'detected' : 'not detected'),
       if (tel?.batteryMv != null) ('Battery', '${tel!.batteryMv} mV${tel.lowBattery ? ' · low' : ''}'),
+      if (d.simulatorId != null) ('Simulator tag', simulatorKey(d.simulatorId!)),
     ];
     Widget packet(String label, AdvertisementData data) {
       final bytes = data.toBytes();

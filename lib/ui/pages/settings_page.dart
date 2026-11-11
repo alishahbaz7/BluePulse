@@ -1,13 +1,11 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/controller.dart';
 import '../../app/settings.dart';
-import '../../version.dart';
 import '../format.dart';
 import '../theme.dart';
-import '../update_ui.dart';
-import '../usage_ui.dart';
+import '../about_card.dart';
+import '../files_card.dart';
 import '../widgets/common.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -131,7 +129,7 @@ class SettingsPage extends StatelessWidget {
                       sentence: 'Every device and packet heard so far is removed from the app.',
                       action: 'Clear',
                     );
-                    if (ok) r.clear();
+                    if (ok) c.clearDevices();
                   },
             icon: const Icon(Icons.delete_outline, size: 18),
             label: const Text('Clear session'),
@@ -144,19 +142,9 @@ class SettingsPage extends StatelessWidget {
         ]),
       ),
       const SizedBox(height: 14),
-      const UpdatesCard(),
+      const FilesCard(),
       const SizedBox(height: 14),
-      const UsageCard(),
-      const SizedBox(height: 14),
-      PanelCard(
-        title: 'About',
-        child: Wrap(spacing: 28, runSpacing: 12, children: [
-          Fact('Version', c.version),
-          const Fact('Protocol', protocolSource),
-          Fact('Platform', kIsWeb ? 'Web' : defaultTargetPlatform.name),
-          const Fact('Build', kDebugMode ? 'Debug' : (kProfileMode ? 'Profile' : 'Release')),
-        ]),
-      ),
+      const AboutCard(),
     ]);
   }
 }

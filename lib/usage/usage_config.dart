@@ -32,6 +32,14 @@ abstract final class UsageConfig {
   /// How often reports are sent while the app is open (also at start, on close and on a name change).
   static const sendEvery = Duration(minutes: 5);
 
+  /// While sends fail the gap doubles — 10, 20, then every 30 minutes at most — so a server that is
+  /// down or a computer that is offline costs a few quick attempts an hour, not one every 5 minutes.
+  static const retryAtMost = Duration(minutes: 30);
+
+  /// The longest one send may take while the app runs, whatever the network does; then it has
+  /// failed and the report waits for the next try. (Closing waits 3 seconds at most.)
+  static const sendTimeout = Duration(seconds: 30);
+
   /// Events kept while offline; the oldest go first beyond this.
   static const maxQueuedEvents = 500;
 

@@ -102,8 +102,11 @@ class SimSettings {
     this.major = 1,
     this.minor = 1,
     this.measuredPower = -59,
+    this.simTag = true,
+    String? simIdHex,
   })  : name = name ?? profile.defaultName,
-        instanceHex = instanceHex ?? _randomHex(6);
+        instanceHex = instanceHex ?? _randomHex(6),
+        simIdHex = simIdHex ?? _randomHex(4);
 
   SimProfile profile;
   String name;
@@ -146,6 +149,14 @@ class SimSettings {
   int major;
   int minor;
   int measuredPower;
+
+  /// Adds the BluePulse simulator tag ([simulatorCompanyId]) wherever a packet has room, so a
+  /// BluePulse receiver keeps this as one device although the address changes with every burst.
+  bool simTag;
+
+  /// This install's simulated sensor's ID (4 bytes, hex), made once: what the tag carries when the
+  /// packets have no beacon frame.
+  String simIdHex;
 
   static String _randomHex(int bytes) {
     final r = Random();
@@ -196,6 +207,8 @@ class SimSettings {
         'major': major,
         'minor': minor,
         'measuredPower': measuredPower,
+        'simTag': simTag,
+        'simIdHex': simIdHex,
       };
 
   /// Unknown or damaged values fall back to their defaults.
@@ -242,6 +255,8 @@ class SimSettings {
       major: pick('major', d.major),
       minor: pick('minor', d.minor),
       measuredPower: pick('measuredPower', d.measuredPower),
+      simTag: pick('simTag', d.simTag),
+      simIdHex: pick('simIdHex', d.simIdHex),
     );
   }
 
@@ -326,10 +341,13 @@ class SimValues {
 
 /// One simulated transmission: the advertisement and, when the profile has one, the scan response.
 class SimPayload {
-  const SimPayload(this.adv, this.scanResponse);
+  const SimPayload(this.adv, this.scanResponse, {this.simulatorId});
 
   final AdvertisementData adv;
   final AdvertisementData? scanResponse;
+
+  /// The ID the simulator tag carries, when at least one packet has it.
+  final int? simulatorId;
 
   /// Legacy advertising carries at most 31 bytes per packet.
   static const maxBytes = 31;
@@ -352,9 +370,58 @@ Uint8List _hex(String hex, int bytes) {
   return parseHex(padded);
 }
 
+/// The beacon ID these settings put on air, or null for a sensor without a beacon frame.
+BeaconId? simBeaconId(SimSettings s) {
+  BeaconId eddystone() => BeaconId.eddystone(_hex(s.namespaceHex, 10), _hex(s.instanceHex, 6));
+  BeaconId iBeacon() => BeaconId.iBeacon(_hex(s.iBeaconUuidHex, 16), s.major.clamp(0, 65535), s.minor.clamp(0, 65535));
+  return switch (s.profile) {
+    SimProfile.eyeSensor => switch (s.sensorPacket) {
+        SensorPacket.sensorOnly => null,
+        SensorPacket.eddystoneAndSensor => eddystone(),
+        SensorPacket.iBeaconAndSensor => iBeacon(),
+      },
+    SimProfile.eyeBeacon => s.beaconFrame == BeaconFrame.eddystone ? eddystone() : iBeacon(),
+    SimProfile.iBeacon => iBeacon(),
+  };
+}
+
+/// The ID the simulator tag carries. A simulated beacon's follows from its beacon ID, so a receiver
+/// can join the beacon frames Windows sends without the tag; a sensor alone has this install's own.
+int simulatorIdOf(SimSettings s) {
+  final beacon = simBeaconId(s);
+  if (beacon != null) return simulatorIdForBeacon(beacon);
+  return int.tryParse(s.simIdHex, radix: 16) ?? 0;
+}
+
 /// The packets for these settings and values, exactly as they go on air.
-SimPayload buildPayload(SimSettings s, SimValues v) {
-  final name = s.name.trim().isEmpty ? null : s.name.trim();
+///
+/// [sendsName] is false on Windows, which does not let apps advertise a name. [reservedBytes] is
+/// room kept for what the system adds itself (Windows' Flags), so the tag never overfills a packet.
+SimPayload buildPayload(SimSettings s, SimValues v, {bool sendsName = true, int reservedBytes = 0}) {
+  final (adv, response) = _packets(s, v, sendsName ? s.name.trim() : '', sendsName);
+  if (!s.simTag) return SimPayload(adv, response);
+  final id = simulatorIdOf(s);
+  final tag = encodeSimulatorTag(id);
+  final room = SimPayload.maxBytes - reservedBytes;
+  var tagged = false;
+  AdvertisementData withTag(AdvertisementData d) {
+    if (d.toBytes().length + simulatorTagBytes > room) return d;
+    tagged = true;
+    return AdvertisementData(
+      name: d.name,
+      serviceUuids16: d.serviceUuids16,
+      serviceData16: d.serviceData16,
+      manufacturerData: {...d.manufacturerData, simulatorCompanyId: tag},
+    );
+  }
+
+  final a = withTag(adv);
+  final r = response == null ? null : withTag(response);
+  return SimPayload(a, r, simulatorId: tagged ? id : null);
+}
+
+(AdvertisementData, AdvertisementData?) _packets(SimSettings s, SimValues v, String typedName, bool sendsName) {
+  final name = typedName.isEmpty ? null : typedName;
   AdvertisementData eddystone() => AdvertisementData(
         serviceUuids16: const [eddystoneServiceUuid],
         serviceData16: {
@@ -390,15 +457,18 @@ SimPayload buildPayload(SimSettings s, SimValues v) {
       );
       final sensor = AdvertisementData(name: name, manufacturerData: {teltonikaCompanyId: block});
       return switch (s.sensorPacket) {
-        SensorPacket.sensorOnly => SimPayload(sensor, null),
-        SensorPacket.eddystoneAndSensor => SimPayload(eddystone(), sensor),
-        SensorPacket.iBeaconAndSensor => SimPayload(iBeacon(), sensor),
+        SensorPacket.sensorOnly => (sensor, null),
+        SensorPacket.eddystoneAndSensor => (eddystone(), sensor),
+        SensorPacket.iBeaconAndSensor => (iBeacon(), sensor),
       };
     case SimProfile.eyeBeacon:
       final block = encodeTeltonika(lowBattery: v.lowBattery(s), batteryMv: s.sendBattery ? v.batteryMv : null);
       final response = AdvertisementData(name: name, manufacturerData: {teltonikaCompanyId: block});
-      return SimPayload(s.beaconFrame == BeaconFrame.eddystone ? eddystone() : iBeacon(), response);
+      return (s.beaconFrame == BeaconFrame.eddystone ? eddystone() : iBeacon(), response);
     case SimProfile.iBeacon:
-      return SimPayload(iBeacon(), name == null ? null : AdvertisementData(name: name));
+      // From Windows, which sends no name, the tag goes in a burst of its own between the iBeacon
+      // frames: a frame has no room for it, and without it every burst would be a new device.
+      if (!sendsName && s.simTag) return (iBeacon(), const AdvertisementData());
+      return (iBeacon(), name == null ? null : AdvertisementData(name: name));
   }
 }

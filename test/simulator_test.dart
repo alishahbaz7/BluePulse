@@ -14,6 +14,7 @@ import 'package:bluepulse/simulator/sim_service.dart';
 import 'package:eye_protocol/eye_protocol.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers.dart';
 
@@ -118,15 +119,176 @@ void main() {
     test('the receiver recognises the simulated devices as an EYE SENSOR and an EYE BEACON', () {
       final r = DeviceRegistry(AppSettings(null, false));
       final now = DateTime.now();
-      for (final (mac, profile) in [('5A:00:00:00:00:01', SimProfile.eyeSensor), ('5A:00:00:00:00:02', SimProfile.eyeBeacon)]) {
-        final s = SimSettings(profile: profile);
+      final sensor = SimSettings();
+      final beacon = SimSettings(profile: SimProfile.eyeBeacon);
+      for (final (mac, s) in [('5A:00:00:00:00:01', sensor), ('5A:00:00:00:00:02', beacon)]) {
         final p = buildPayload(s, SimValues.from(s));
         r.ingest(ScanEvent(deviceId: mac, time: now, rssi: -60, data: p.adv));
         if (p.scanResponse != null) r.ingest(ScanEvent(deviceId: mac, time: now, rssi: -60, data: p.scanResponse!));
       }
-      expect(r.device('5A:00:00:00:00:01')!.model, DeviceModel.eyeSensor);
-      expect(r.device('5A:00:00:00:00:02')!.model, DeviceModel.eyeBeacon);
+      expect(r.device('5A:00:00:00:00:01')!.model, DeviceModel.eyeSensor, reason: 'its name leaves no room for the tag');
+      final b = r.device(simulatorKey(simulatorIdOf(beacon)))!;
+      expect(b.model, DeviceModel.eyeBeacon, reason: 'the tag in the scan response names it');
+      expect(b.name, 'ID1_SIM0001');
+      expect(b.beaconId, isNotNull, reason: 'the advertisement joined it');
+      expect(b.lastAddress, '5A:00:00:00:00:02');
+      expect(r.device('5A:00:00:00:00:02'), isNull);
       r.dispose();
+    });
+  });
+
+  group('simulator tag', () {
+    List<SimSettings> everyLayout({bool simTag = true}) => [
+          for (final packet in SensorPacket.values) SimSettings(sensorPacket: packet, simTag: simTag),
+          for (final frame in BeaconFrame.values) SimSettings(profile: SimProfile.eyeBeacon, beaconFrame: frame, simTag: simTag),
+          SimSettings(profile: SimProfile.iBeacon, simTag: simTag),
+        ];
+    bool hasTag(AdvertisementData? d) => d?.manufacturerData.containsKey(simulatorCompanyId) ?? false;
+
+    test('Windows: no name, the tag wherever it fits, and no packet past 31 bytes with the Flags Windows adds', () {
+      for (final s in everyLayout()) {
+        final p = buildPayload(s, SimValues.from(s), sendsName: false, reservedBytes: 3);
+        final what = '${s.profile.name}/${s.sensorPacket.name}/${s.beaconFrame.name}';
+        expect(p.problem, isNull, reason: what);
+        expect(p.advBytes + 3, lessThanOrEqualTo(31), reason: what);
+        if (p.scanResponse != null) expect(p.scanResponseBytes! + 3, lessThanOrEqualTo(31), reason: what);
+        expect([p.adv.name, p.scanResponse?.name], [null, null], reason: '$what: Windows sends no name');
+        expect(p.simulatorId, simulatorIdOf(s), reason: what);
+        expect(hasTag(p.adv) || hasTag(p.scanResponse), isTrue, reason: what);
+        expect(decoded(p).simulatorId, simulatorIdOf(s), reason: what);
+      }
+      final sensor = SimSettings();
+      expect(hasTag(buildPayload(sensor, SimValues.from(sensor), sendsName: false, reservedBytes: 3).adv), isTrue,
+          reason: 'an EYE SENSOR alone carries the tag in its one packet');
+      final ib = SimSettings(profile: SimProfile.iBeacon);
+      final p = buildPayload(ib, SimValues.from(ib), sendsName: false, reservedBytes: 3);
+      expect(hasTag(p.adv), isFalse, reason: 'an iBeacon frame has no room');
+      expect(p.scanResponse!.manufacturerData.keys, [simulatorCompanyId], reason: 'so the tag has a burst of its own');
+    });
+
+    test('tag off: exactly what a real device sends', () {
+      for (final s in everyLayout(simTag: false)) {
+        for (final sendsName in [true, false]) {
+          final p = buildPayload(s, SimValues.from(s), sendsName: sendsName, reservedBytes: sendsName ? 0 : 3);
+          expect([hasTag(p.adv), hasTag(p.scanResponse), p.simulatorId], [false, false, null]);
+        }
+      }
+      final ib = SimSettings(profile: SimProfile.iBeacon, simTag: false);
+      expect(buildPayload(ib, SimValues.from(ib), sendsName: false).scanResponse, isNull);
+    });
+
+    test('Android: the tag never pushes the name out; it goes where there is room', () {
+      final sensor = SimSettings();
+      final p = buildPayload(sensor, SimValues.from(sensor));
+      expect([p.adv.name, hasTag(p.adv), p.problem], ['MP1_SIM001', false, null]);
+      final shortName = SimSettings(name: 'S1');
+      expect(hasTag(buildPayload(shortName, SimValues.from(shortName)).adv), isTrue);
+      final beacon = SimSettings(profile: SimProfile.eyeBeacon);
+      final b = buildPayload(beacon, SimValues.from(beacon));
+      expect([b.scanResponse!.name, hasTag(b.scanResponse)], ['ID1_SIM0001', true]);
+      expect(b.scanResponseBytes, lessThanOrEqualTo(31));
+    });
+
+    test('settings saved by the version before the tag keep one simulator ID from the first start on', () async {
+      final old = SimSettings().toJson()
+        ..remove('simIdHex')
+        ..remove('simTag');
+      SharedPreferences.setMockInitialValues({'dev.simulator': jsonEncode(old)});
+      final prefs = await SharedPreferences.getInstance();
+      final first = SimulatorService(advertiser: FakeAdvertiser(), prefs: prefs);
+      await Future<void>.delayed(Duration.zero);
+      final second = SimulatorService(advertiser: FakeAdvertiser(), prefs: prefs);
+      expect(second.settings.simIdHex, first.settings.simIdHex, reason: 'the next start lists the same SIM device');
+      expect(second.settings.simTag, isTrue);
+      first.dispose();
+      second.dispose();
+    });
+
+    test('a simulated beacon gets its ID from its beacon ID; a sensor alone keeps the one made for this install', () {
+      final sensor = SimSettings();
+      expect(simulatorIdOf(sensor), int.parse(sensor.simIdHex, radix: 16));
+      final again = SimSettings.fromJson(jsonDecode(jsonEncode(sensor.toJson())) as Map<String, Object?>);
+      expect(simulatorIdOf(again), simulatorIdOf(sensor), reason: 'kept between runs');
+      expect(SimSettings().simIdHex, isNot(sensor.simIdHex), reason: 'each install its own');
+      for (final s in everyLayout().where((s) => simBeaconId(s) != null)) {
+        final p = buildPayload(s, SimValues.from(s));
+        expect(simulatorIdOf(s), simulatorIdForBeacon(decoded(p).beaconId!), reason: 'what a receiver works out');
+      }
+    });
+  });
+
+  group('receiving a simulator whose address keeps changing', () {
+    late DeviceRegistry r;
+    late DateTime t;
+    var n = 0;
+    setUp(() {
+      r = DeviceRegistry(AppSettings(null, false)..showAllBeacons = true); // the iBeacon one is an "Other beacon"
+      t = DateTime(2026, 11, 10, 15);
+    });
+    tearDown(() => r.dispose());
+
+    String newMac() {
+      n++;
+      return 'C0:FF:EE:00:${(n ~/ 256).toRadixString(16).padLeft(2, '0')}:${(n % 256).toRadixString(16).padLeft(2, '0')}'
+          .toUpperCase();
+    }
+
+    void hear(AdvertisementData d) {
+      t = t.add(const Duration(seconds: 2));
+      r.ingest(ScanEvent(deviceId: newMac(), time: t, rssi: -55, data: d));
+    }
+
+    test('Windows EYE SENSOR: a new address every burst, still one device', () {
+      final s = SimSettings();
+      final p = buildPayload(s, SimValues.from(s), sendsName: false, reservedBytes: 3);
+      for (var i = 0; i < 10; i++) {
+        hear(p.adv);
+      }
+      expect(r.devices, hasLength(1));
+      final d = r.devices.single;
+      expect(d.mac, simulatorKey(simulatorIdOf(s)));
+      expect(d.isSimulated, isTrue);
+      expect(d.model, DeviceModel.eyeSensor);
+      expect(d.readings, 10);
+      expect(d.lastAddress, startsWith('C0:FF:EE'));
+      expect(d.searchText, contains('sim-'), reason: 'the Devices search finds it by SIM');
+    });
+
+    test('Windows EYE BEACON: the beacon frames, sent without the tag, join it, even ones heard before the first tag', () {
+      final s = SimSettings(profile: SimProfile.eyeBeacon);
+      final p = buildPayload(s, SimValues.from(s), sendsName: false, reservedBytes: 3);
+      for (var i = 0; i < 4; i++) {
+        hear(p.adv); // Eddystone, untagged; the first arrives before anything tagged
+        hear(p.scanResponse!); // battery and the tag
+      }
+      expect(r.devices, hasLength(1));
+      final d = r.devices.single;
+      expect(d.mac, simulatorKey(simulatorIdOf(s)));
+      expect(d.model, DeviceModel.eyeBeacon);
+      expect(d.beaconId, simBeaconId(s));
+      expect(d.readings, 7, reason: 'every burst but the first, which came in under its own address and was folded in');
+    });
+
+    test('Windows iBeacon: frames and tag bursts are one device', () {
+      final s = SimSettings(profile: SimProfile.iBeacon);
+      final p = buildPayload(s, SimValues.from(s), sendsName: false, reservedBytes: 3);
+      for (var i = 0; i < 3; i++) {
+        hear(p.scanResponse!);
+        hear(p.adv);
+      }
+      expect(r.devices, hasLength(1));
+      expect(r.devices.single.beaconId, simBeaconId(s));
+    });
+
+    test('real beacons nearby are not taken in', () {
+      final s = SimSettings(profile: SimProfile.eyeBeacon);
+      final p = buildPayload(s, SimValues.from(s), sendsName: false, reservedBytes: 3);
+      hear(p.scanResponse!);
+      final real = SimSettings(profile: SimProfile.eyeBeacon, simTag: false); // another instance ID
+      final rp = buildPayload(real, SimValues.from(real));
+      r.ingest(ScanEvent(deviceId: 'AA:BB:CC:00:00:01', time: t, rssi: -70, data: rp.adv));
+      r.ingest(ScanEvent(deviceId: 'AA:BB:CC:00:00:01', time: t, rssi: -70, data: rp.scanResponse!));
+      expect(r.devices.map((d) => d.mac), unorderedEquals([simulatorKey(simulatorIdOf(s)), 'AA:BB:CC:00:00:01']));
     });
   });
 
@@ -239,7 +401,22 @@ void main() {
       expect(first.serviceData16.containsKey(eddystoneServiceUuid), isTrue);
       expect(second.manufacturerData.containsKey(teltonikaCompanyId), isTrue, reason: 'the scan response in its own burst');
       expect(radio.started.every((m) => m['name'] == null), isTrue, reason: 'Windows sends no name');
+      expect(second.manufacturerData.containsKey(simulatorCompanyId), isTrue, reason: 'with the simulator tag');
+      expect([first.name, second.name], [null, null], reason: 'and no name in the packets either');
       await sim.stop();
+      sim.dispose();
+    });
+
+    testWidgets('Android: a restart replaces the transmission without stopping it, so the phone does not get its '
+        'own name back and lose it again in between', (tester) async {
+      final radio = FakeAdvertiser();
+      final sim = SimulatorService(advertiser: radio, random: Random(1));
+      await sim.start();
+      await sim.update((s) => s.intervalMs = 5000);
+      await sim.update((s) => s.simTag = false);
+      expect(radio.calls, ['start', 'start', 'start']);
+      await sim.stop();
+      expect(radio.calls.last, 'stop');
       sim.dispose();
     });
 
@@ -297,6 +474,40 @@ void main() {
     await tester.tap(find.text('Stop'));
     await tester.pump();
     expect(find.text('Stopped'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+
+  testWidgets('Simulator page on Windows: the receiver finds it by its simulator ID; the name is explained', (tester) async {
+    tester.view.physicalSize = const Size(1440, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final settings = AppSettings(null, false);
+    final sim = SimulatorService(
+      advertiser: FakeAdvertiser(caps: const TxCapabilities(supported: true, txPower: true, reservedBytes: 3)),
+      random: Random(3),
+    );
+    final c = AppController(
+      settings: settings,
+      registry: DeviceRegistry(settings),
+      liveScanner: null,
+      demoScanner: FakeScanner(),
+      simulator: sim,
+    );
+    await tester.pumpWidget(EyeApp(controller: c));
+    await tester.pump();
+    await tester.tap(find.text('Simulator').first);
+    await tester.pumpAndSettle();
+    final key = simulatorKey(simulatorIdOf(sim.settings));
+    expect(find.text(key), findsWidgets, reason: 'the Receiver tile and the decoded packet');
+    expect(find.textContaining('each from a new random address'), findsOneWidget);
+    expect(find.text('MP1_SIM001'), findsOneWidget, reason: 'in the greyed name field only, not on air');
+
+    await tester.tap(find.byType(Switch).first); // the BluePulse tag, off
+    await tester.pumpAndSettle();
+    expect(sim.settings.simTag, isFalse);
+    expect(find.text(key), findsNothing);
+    expect(find.textContaining('turn the BluePulse tag on'), findsOneWidget, reason: 'nothing identifies it now');
     await tester.pumpWidget(const SizedBox());
     c.dispose();
   });

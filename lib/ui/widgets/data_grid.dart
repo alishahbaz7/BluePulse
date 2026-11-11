@@ -46,6 +46,7 @@ class DataGrid<T> extends StatefulWidget {
     this.rowHeight = 34,
     this.shrinkWrap = false,
     this.dimmed,
+    this.pinned,
   });
 
   final List<T> rows;
@@ -55,6 +56,9 @@ class DataGrid<T> extends StatefulWidget {
 
   /// Rows drawn faded (devices out of focus).
   final bool Function(T row)? dimmed;
+
+  /// Rows that stay at the top whatever the sort, in the sort's order among themselves.
+  final bool Function(T row)? pinned;
   final int? initialSort;
   final bool initialAscending;
   final double rowHeight;
@@ -90,6 +94,13 @@ class _DataGridState<T> extends State<DataGrid<T>> {
   }
 
   List<T> _sorted() {
+    final rows = _sortedByColumn();
+    final p = widget.pinned;
+    if (p == null) return rows;
+    return [...rows.where(p), ...rows.where((r) => !p(r))];
+  }
+
+  List<T> _sortedByColumn() {
     final s = _sort;
     if (s == null || widget.columns[s].sortValue == null) return widget.rows;
     final key = widget.columns[s].sortValue!;
@@ -128,11 +139,15 @@ class _DataGridState<T> extends State<DataGrid<T>> {
         ]),
       );
 
+      final pinnedCount = widget.pinned == null ? 0 : rows.where(widget.pinned!).length;
+
       Widget rowAt(int i) {
         final row = rows[i];
         final selected = widget.selected?.call(row) ?? false;
-        final stripe = i.isOdd ? Color.alphaBlend(t.text.withValues(alpha: 0.025), t.panel) : t.panel;
-        return Material(
+        final stripe = i.isOdd ? rowStripe(t) : t.panel;
+        // The last pinned row closes the pinned section with a line, when more rows follow.
+        final lastPinned = pinnedCount > 0 && i == pinnedCount - 1 && rows.length > pinnedCount;
+        final cell = Material(
           color: selected ? Color.alphaBlend(t.accentSoft, t.panel) : stripe,
           child: InkWell(
             onTap: widget.onTap == null ? null : () => widget.onTap!(row),
@@ -166,6 +181,12 @@ class _DataGridState<T> extends State<DataGrid<T>> {
               ),
             ),
           ),
+        );
+        if (!lastPinned) return cell;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: t.accent, width: 2))),
+          child: cell,
         );
       }
 
@@ -241,3 +262,7 @@ class _DataGridState<T> extends State<DataGrid<T>> {
     );
   }
 }
+
+/// The tint of every other row, in tables and lists: plain enough to read through, clear enough to
+/// follow a row across.
+Color rowStripe(AppTokens t) => Color.alphaBlend(t.text.withValues(alpha: 0.055), t.panel);

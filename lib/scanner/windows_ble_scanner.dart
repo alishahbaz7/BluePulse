@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 
 import 'scanner.dart';
+import '../core/error_log.dart';
 
 /// Live scanning on Windows through BluePulse's own native scanner: every advertisement and scan
 /// response exactly as Windows receives it, raw bytes included. (universal_ble's Windows scanner
@@ -34,7 +35,8 @@ class WindowsBleScanner implements BeaconScanner {
   Future<void> init() async {
     if (_initialised) return;
     _initialised = true;
-    _radioSub = UniversalBle.availabilityStream.listen(_onRadio, onError: (_) {});
+    _radioSub = UniversalBle.availabilityStream.listen(_onRadio,
+        onError: (Object e) => errorLog.warn('scanner', 'Bluetooth state could not be read', error: e));
     try {
       _onRadio(await UniversalBle.getBluetoothAvailabilityState());
     } catch (e) {

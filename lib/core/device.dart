@@ -71,9 +71,15 @@ const eventSpanMs = 80;
 class EyeDevice {
   EyeDevice(this.mac, {required this.firstSeen}) : lastSeen = firstSeen;
 
+  /// The MAC, or for a simulated device its key (`SIM-1A2B3C4D`), since its address changes.
   final String mac;
   final DateTime firstSeen;
   DateTime lastSeen;
+
+  /// The address the last packet came from — for a simulated device, one of many.
+  String? lastAddress;
+
+  bool get isSimulated => isSimulatorKey(mac);
 
   String? name;
   AdvertisementData merged = const AdvertisementData();

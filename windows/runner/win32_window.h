@@ -55,6 +55,12 @@ class Win32Window {
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
+  // Gives the title bar the app's own theme rather than the system's: dark or
+  // light, and on Windows 11 the exact |caption|, |text| and |border| colours
+  // (Windows 10 takes dark or light only). Kept when the system theme changes.
+  void SetTitleBarColors(bool dark, COLORREF caption, COLORREF text,
+                         COLORREF border);
+
  protected:
   // Processes and route salient window messages for mouse handling,
   // size change and DPI. Delegates handling of these to member overloads that
@@ -89,6 +95,16 @@ class Win32Window {
 
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
+
+  // Applies the colours given to SetTitleBarColors.
+  void ApplyTitleBar();
+
+  // The app has chosen the title bar's colours (SetTitleBarColors).
+  bool app_title_bar_ = false;
+  bool title_dark_ = false;
+  COLORREF title_caption_ = 0;
+  COLORREF title_text_ = 0;
+  COLORREF title_border_ = 0;
 
   bool quit_on_close_ = false;
 

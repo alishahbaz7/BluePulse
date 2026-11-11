@@ -37,6 +37,7 @@ class UpdateService extends ChangeNotifier {
     required this.host,
     required this.transport,
     Uri? manifestUrl,
+    this.checkTimeout = const Duration(seconds: 60),
   })  : manifestUrl = manifestUrl ?? UpdateConfig.manifestUrl,
         disabledReason = current == null
             ? 'The app version is unknown'
@@ -48,7 +49,8 @@ class UpdateService extends ChangeNotifier {
   UpdateService.disabled({this.disabledReason, this.current})
       : host = null,
         transport = null,
-        manifestUrl = Uri() {
+        manifestUrl = Uri(),
+        checkTimeout = Duration.zero {
     stage = UpdateStage.disabled;
   }
 
@@ -59,6 +61,9 @@ class UpdateService extends ChangeNotifier {
   final UpdateHost? host;
   final UpdateTransport? transport;
   final Uri manifestUrl;
+
+  /// The longest a check may take, whatever the network does; then it has failed, quietly.
+  final Duration checkTimeout;
 
   late UpdateStage stage;
   UpdateManifest? manifest;
@@ -95,20 +100,30 @@ class UpdateService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Asks the release channel for the latest version. Silent: whatever happens — no network, GitHub
+  /// down, a broken `latest.json` — it ends as up to date, available, or failed (shown only in
+  /// Settings), never stuck at checking, and this version keeps running.
   Future<void> check() async {
     if (stage == UpdateStage.disabled || busy) return;
     _set(UpdateStage.checking);
+    String? failure;
     try {
-      final text = await transport!.getText(manifestUrl);
+      final text = await transport!.getText(manifestUrl).timeout(checkTimeout);
       manifest = UpdateManifest.parse(text, base: manifestUrl, expectedApp: UpdateConfig.appName);
-      lastChecked = DateTime.now();
-      _set(updateAvailable ? UpdateStage.available : UpdateStage.upToDate);
     } on UpdateException catch (e) {
-      lastChecked = DateTime.now();
-      _set(UpdateStage.failed, error: e.message.contains('HTTP 404') ? 'No release published yet' : e.message);
+      failure = e.message.contains('HTTP 404') ? 'No release published yet' : e.message;
     } on FormatException catch (e) {
-      lastChecked = DateTime.now();
-      _set(UpdateStage.failed, error: e.message);
+      failure = e.message;
+    } on TimeoutException {
+      failure = '${manifestUrl.host} did not answer in time';
+    } catch (e) {
+      failure = 'Could not check for updates (${e.runtimeType})';
+    }
+    lastChecked = DateTime.now();
+    if (failure != null) {
+      _set(UpdateStage.failed, error: failure);
+    } else {
+      _set(updateAvailable ? UpdateStage.available : UpdateStage.upToDate);
     }
   }
 
@@ -176,6 +191,9 @@ class UpdateService extends ChangeNotifier {
       _set(UpdateStage.failed, error: e.message);
     } on FileSystemException catch (e) {
       _set(UpdateStage.failed, error: 'Could not write ${p.basename(e.path ?? 'the file')} (${e.osError?.message ?? e.message})');
+    } catch (e) {
+      // Installs go beside the running version, so a failure anywhere leaves this one as it was.
+      _set(UpdateStage.failed, error: 'The update stopped (${e.runtimeType}); this version is unchanged');
     } finally {
       if (part != null && part.existsSync()) {
         try {
@@ -190,15 +208,17 @@ class UpdateService extends ChangeNotifier {
     final h = host;
     final a = asset;
     if (h == null) return;
-    if (h.platform == UpdatePlatform.windows) {
-      await h.restart();
-    } else if (a != null) {
-      final staging = await h.stagingDir();
-      try {
+    try {
+      if (h.platform == UpdatePlatform.windows) {
+        await h.restart();
+      } else if (a != null) {
+        final staging = await h.stagingDir();
         await h.openInstaller(File(p.join(staging.path, a.file)));
-      } on UpdateException catch (e) {
-        _set(UpdateStage.failed, error: e.message);
       }
+    } on UpdateException catch (e) {
+      _set(UpdateStage.failed, error: e.message);
+    } catch (e) {
+      _set(UpdateStage.failed, error: 'Could not restart (${e.runtimeType}); the new version starts next time');
     }
   }
 

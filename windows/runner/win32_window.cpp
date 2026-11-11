@@ -16,6 +16,12 @@ namespace {
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+/// Windows 11 title bar colours (DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR,
+/// DWMWA_TEXT_COLOR); Windows 10 refuses them and keeps dark or light.
+constexpr DWORD kDwmBorderColor = 34;
+constexpr DWORD kDwmCaptionColor = 35;
+constexpr DWORD kDwmTextColor = 36;
+
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
 /// Registry key for app theme preference.
@@ -214,7 +220,12 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
-      UpdateTheme(hwnd);
+      // The app's own choice stands; without one, follow the system.
+      if (app_title_bar_) {
+        ApplyTitleBar();
+      } else {
+        UpdateTheme(hwnd);
+      }
       return 0;
   }
 
@@ -270,6 +281,34 @@ bool Win32Window::OnCreate() {
 
 void Win32Window::OnDestroy() {
   // No-op; provided for subclasses.
+}
+
+void Win32Window::SetTitleBarColors(bool dark, COLORREF caption,
+                                    COLORREF text, COLORREF border) {
+  app_title_bar_ = true;
+  title_dark_ = dark;
+  title_caption_ = caption;
+  title_text_ = text;
+  title_border_ = border;
+  ApplyTitleBar();
+}
+
+void Win32Window::ApplyTitleBar() {
+  HWND window = window_handle_;
+  if (window == nullptr) {
+    return;
+  }
+  BOOL dark = title_dark_ ? TRUE : FALSE;
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark,
+                        sizeof(dark));
+  DwmSetWindowAttribute(window, kDwmCaptionColor, &title_caption_,
+                        sizeof(title_caption_));
+  DwmSetWindowAttribute(window, kDwmTextColor, &title_text_,
+                        sizeof(title_text_));
+  DwmSetWindowAttribute(window, kDwmBorderColor, &title_border_,
+                        sizeof(title_border_));
+  // Windows 10 repaints the frame only when asked.
+  RedrawWindow(window, nullptr, nullptr, RDW_FRAME | RDW_INVALIDATE);
 }
 
 void Win32Window::UpdateTheme(HWND const window) {

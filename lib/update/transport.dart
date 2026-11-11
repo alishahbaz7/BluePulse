@@ -48,7 +48,7 @@ class HttpUpdateTransport implements UpdateTransport {
       return await req.close().timeout(const Duration(seconds: 20));
     } on SocketException {
       throw UpdateException('No connection to ${url.host}');
-    } on HandshakeException {
+    } on TlsException {
       throw UpdateException('Secure connection to ${url.host} failed');
     } on TimeoutException {
       throw UpdateException('${url.host} did not answer in time');
@@ -60,18 +60,38 @@ class HttpUpdateTransport implements UpdateTransport {
   String _status(HttpClientResponse r, Uri url) =>
       r.statusCode == 404 ? 'Not found on ${url.host} (HTTP 404)' : 'HTTP ${r.statusCode} from ${url.host}';
 
+  /// Anything else the network or the server does, in words — so every failure reaches the service
+  /// as an [UpdateException] and the app carries on with the version it has.
+  static String _failure(Uri url, Object e) => switch (e) {
+        SocketException() || HttpException() => 'Connection to ${url.host} was lost',
+        TlsException() => 'Secure connection to ${url.host} failed',
+        _ => 'Could not read from ${url.host} (${e.runtimeType})',
+      };
+
+  static Future<void> _discard(HttpClientResponse r) async {
+    try {
+      await r.drain<void>();
+    } catch (_) {
+      // The status says enough.
+    }
+  }
+
   @override
   Future<String> getText(Uri url) async {
     final client = _client();
     try {
       final r = await _get(client, url);
       if (r.statusCode != 200) {
-        await r.drain<void>();
+        await _discard(r);
         throw UpdateException(_status(r, url));
       }
-      return await r.transform(utf8.decoder).join().timeout(const Duration(seconds: 20));
+      return await r.transform(const Utf8Decoder(allowMalformed: true)).join().timeout(const Duration(seconds: 20));
+    } on UpdateException {
+      rethrow;
     } on TimeoutException {
       throw UpdateException('${url.host} stopped sending');
+    } catch (e) {
+      throw UpdateException(_failure(url, e));
     } finally {
       client.close(force: true);
     }
@@ -89,7 +109,7 @@ class HttpUpdateTransport implements UpdateTransport {
     try {
       final r = await _get(client, url);
       if (r.statusCode != 200) {
-        await r.drain<void>();
+        await _discard(r);
         throw UpdateException(_status(r, url));
       }
       final total = r.contentLength >= 0 ? r.contentLength : null;
@@ -113,12 +133,21 @@ class HttpUpdateTransport implements UpdateTransport {
         throw UpdateException('Download ended early (${received ~/ 1024} of ${total ~/ 1024} KB)');
       }
       return digest.value.toString();
+    } on UpdateException {
+      rethrow;
+    } on FileSystemException {
+      rethrow; // the service names the file it could not write
     } on TimeoutException {
       throw UpdateException('${url.host} stopped sending');
-    } on SocketException {
-      throw UpdateException('Connection to ${url.host} was lost');
+    } catch (e) {
+      // A connection dropped mid-file is an HttpException, not a SocketException.
+      throw UpdateException(_failure(url, e));
     } finally {
-      await out?.close();
+      try {
+        await out?.close();
+      } catch (_) {
+        // The download failed already; the partial file is removed by the service.
+      }
       client.close(force: true);
     }
   }

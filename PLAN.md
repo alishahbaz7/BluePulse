@@ -9,7 +9,7 @@ Plan v1 · 09-11-2026
 
 ---
 
-## 0. Status — 10-11-2026
+## 0. Status — 11-11-2026
 
 | Phase | State |
 |---|---|
@@ -17,11 +17,14 @@ Plan v1 · 09-11-2026
 | P1 | **Done.** `packages/eye_protocol`: AD parser, Eddystone, iBeacon, Teltonika block, Codec 8 / 8E + CRC, AVL 385 / 10828 / 10829 / 10831, byte inspector. 53 tests; both wiki tracker packets verified (CRC `823F`, `8811`). |
 | P2 | **Built, verified on demo data and tests** (26 app tests): scanners, registry, ADV + scan-response merge, repeats, interval, smoothing, not seen, proximity, distance. **Verified on air** on Windows and Android, 09/10-11-2026. |
 | P3 | **Built**: shell (rail / top bar / drawer), Overview, Devices, Device detail, Packets, Proximity, Decode, Settings. Checked by screenshot in dark, light, folded rail and phone width (web build, demo data). |
-| **OTA** | **Built** (top priority, 09-11-2026): launcher, update check / download / verify / install / restart, Android APK install, release packaging. 27 update tests incl. end-to-end over real sockets with GitHub-style redirects; 4 launcher checks. **Released: 1.0.0 published 10-11-2026** (github.com/alishahbaz7/BluePulse, tag `v1.0.0`); the APK is signed with BluePulse's release key (`keys/`, git-ignored). |
-| **Usage** | **Monitoring live, 10-11-2026** (§10b): Supabase project *BluePulse* (Mumbai) set up, `tool/usage_check.dart` READY, the app's key confirmed unable to read anything, and a release build on the development laptop delivered its first report. Built: each copy reports who uses it (name and team asked once), its version, every start (time open, time scanning, devices heard, pages opened), updates and app errors; starts made offline are kept and sent later. Server side `backend/supabase/usage.sql` checked on Postgres 16 (25 checks: the app's key can write reports and read nothing); 30 app tests; screens checked by screenshot (`test/visual/usage_screens_test.dart`); `tool/usage_check.dart` checks a server without storing anything. Development runs report only when `USAGE_URL` is passed. **Next: control** (block, version per group, features) — the four answers in §10b first. |
+| **OTA** | **Built** (top priority, 09-11-2026): launcher, update check / download / verify / install / restart, Android APK install, release packaging. 27 update tests incl. end-to-end over real sockets with GitHub-style redirects; 4 launcher checks. **Released: 1.0.0 published 10-11-2026** (github.com/alishahbaz7/BluePulse, tag `v1.0.0`); the APK is signed with BluePulse's release key (`keys/`, git-ignored). **Hardened for 1.0.1, 11-11-2026**: every failure — no network, GitHub down, a server that never answers, a connection dropped halfway through `latest.json` or the download, a `latest.json` with a wrong type — ends quietly as *failed* (Settings only), can be tried again, and never touches the running version (before: a dropped download left *Downloading…* until restart). Real-socket tests cut the connection halfway. The Windows title bar now follows the app theme (runner channel `bluepulse/window`). |
+| **Usage** | **Monitoring live, 10-11-2026** (§10b): Supabase project *BluePulse* (Mumbai) set up, `tool/usage_check.dart` READY, the app's key confirmed unable to read anything, and a release build on the development laptop delivered its first report. Built: each copy reports who uses it (name and team asked once), its version, every start (time open, time scanning, devices heard, pages opened), updates and app errors; starts made offline are kept and sent later. Server side `backend/supabase/usage.sql` checked on Postgres 16 (25 checks: the app's key can write reports and read nothing); 30 app tests; screens checked by screenshot (`test/visual/usage_screens_test.dart`); `tool/usage_check.dart` checks a server without storing anything. Development runs report only when `USAGE_URL` is passed. **Next: control** (block, version per group, features) — the four answers in §10b first. **Silent by rule, 11-11-2026**: nothing waits for the server (the first-start name is saved at once and sent in the background), one send gives up after 30 s, anything unexpected is caught and kept, and failing sends back off 10 → 20 → 30 min. |
 | P4 | **Sessions built for 1.0.1, 10-11-2026** (§8): every live scan recorded Start to Stop, listed, opened, exported or shared, deleted; checked on air on Windows (15 EYE devices) and by screenshot (wide, light, phone). Replay: next. |
-| P5–P6 | Not started (Android hardening, Configure). |
-| **Simulator** | **Built for 1.0.1, 10-11-2026**: this device transmits as an EYE SENSOR / EYE BEACON / iBeacon to test receivers (README *Simulator*). Encoders in `eye_protocol` (inverse of the decoders; BTSMP1 frame rebuilt byte for byte); Android plugin `packages/bluepulse_ble_android` (Java, AdvertisingSet: exact interval 100 ms – 10 s, power, name by renaming the phone's Bluetooth, restored on Stop or next start); Windows publisher in `bluepulse_ble_windows` (no interval control, no name, no scan response → a 60–200 ms burst every interval, scan-response data in alternate bursts). 14 tests; screens checked. **On air: to test** — Android → laptop (laptop session measures the gaps), laptop → phone (does Windows keep one address across bursts?). |
+| P5–P6 | **P6 Configure built 11-11-2026**: every setting in §3.8, PIN unlock, write-changed-only, read-back verify, save to flash, restart / restore defaults; protocol confirmed against a recorded EYE App session (HCI log: PIN as ASCII, little-endian UINT16, command `00 10`, MTU 23); tested against a simulated sensor and **on a real BTSMP1 (11-11-2026)**: connected from the moto g57 power, read every setting (interval 2000 ms, repeats 1, +8 dBm, firmware 1.2.10), renamed TestSensor1 → MP1_1EE137, read back, saved to flash; the sensor then advertised the new name. Two findings fixed on the way: the scan pauses while connected, and the session asks for the MTU and waits 1.2 s after discovery before the first read (a read during the sensor's connection-parameter change left it silent until the link timed out). P5: foreground service, radio filters, 1M legacy scanning and 4-minute restarts done 10-11-2026. |
+| **Benchmark** | **10-11-2026, 2 real EYE SENSORs set to 2 s** (MP1_1EE137 7C:D9:F4:15:2D:01, MP1_1FE137 7C:D9:F4:15:2C:FF; measured intervals 2.22 s and 2.53 s), moto g57 power (Android 17) and this Windows laptop, same room, ~175 BLE reports/s around. Phone figures from the HCI snoop log (what the radio passed up), laptop from its session CSV. **BluePulse on the phone** (10 min): 40 % / 54 % of advertising events, average gap 5.5 s / 4.7 s, radio at 100 % the whole time (restart every 4 min). **Teltonika EYE App 1.6.0** (same scan settings: LOW_LATENCY, all matches, unfiltered): 48 % / 46 % for its first 5 min, then Android moved its scan to opportunistic and it heard **nothing** for the rest (43 116 results in 5 min, 95 in the next 5); its list kept showing the old values. **Laptop** (Windows): 11–15 % (gaps 13–22 s). Even at 100 % duty a phone hears ~45 % of events here — RF congestion / Wi-Fi coexistence, to test next with Wi-Fi off. |
+| **Simulator** | **Built for 1.0.1, 10-11-2026**: this device transmits as an EYE SENSOR / EYE BEACON / iBeacon to test receivers (README *Simulator*). Encoders in `eye_protocol` (inverse of the decoders; BTSMP1 frame rebuilt byte for byte); Android plugin `packages/bluepulse_ble_android` (Java, AdvertisingSet: exact interval 100 ms – 10 s, power, name by renaming the phone's Bluetooth, restored on Stop or next start); Windows publisher in `bluepulse_ble_windows` (no interval control, no name, no scan response → a burst of half the interval, 60–500 ms, every interval (200 ms lost a third of the pings on a phone; Windows is on air ~20 ms after Start), scan-response data in alternate bursts). 14 tests; screens checked. **On air, laptop → phone (10-11-2026): Windows sends every burst from a new random address** and refuses a name (both checked on this PC's radio, which also accepted Eddystone's 0x03 / 0x16 sections despite Microsoft's list), so the phone listed a new device every 2 s. Answer: the *BluePulse tag* (`0xFFFF` `BP` + 4-byte ID) in every packet with room; a BluePulse receiver lists them as one device, `SIM-…`, and joins untagged beacon frames by beacon ID (README *Simulator*). **To test** — the same run with 1.0.1 on the phone; Android → laptop (laptop session measures the gaps). |
+| **Files & errors** | **Built 11-11-2026**: one BluePulse folder per device (`lib/app/paths.dart`) — `C:\Users\<you>\BluePulse` (not OneDrive-synced Documents) and phone *Documents › BluePulse* (checked writable without permission on Android 17), changeable in *Settings → Files* (any folder on Windows; Documents or Download on a phone), earlier files brought over once. `BluePulse_errors.log`: one plain line per event, every build, handled failures as warnings, repeats counted, 2 × 1 MB at most. Long logs flush every 2 s and split at a million rows. |
+| **Device lists** | **11-11-2026**: one Tile / List switch for Devices, Configure and the Overview (kept); tiles *As found* by default (new devices at the bottom, a device out of range greyed in place), pinned devices in their own section. Side rail: name and version only. |
 
 ## 1. Decisions
 
@@ -208,12 +211,43 @@ Unknown parameter IDs are skipped by length and kept raw.
 
 Hibernated devices wake with any magnet (LED blinks).
 
+### 3.8 GATT configuration (BTSMP1 page, text layer) 📘
+
+Config service `e61c0000-7df2-4d4e-8e6d-c611745b92e9`; characteristics `e61cXXXX-7df2-4d4e-8e6d-c611745b92e9`.
+
+| Setting | Char | Type | Range | Default |
+|---|---|---|---|---|
+| Device name | `0016` | ASCII | 0–12 chars | unique |
+| Protocol type | `0001` | UINT8 | 0–4 (0–2 from 01.02.10: 0 iBeacon, 1 Eddystone, 2 EYE Sensor; 3 iBeacon + EYE, 4 Eddystone + EYE before) | 1 beacon, 4 sensor |
+| Activate sensors | `0021` | UINT8 bits | bit 0 temperature, 1 humidity, 2 magnetic, 3 movement (01.02.10+) | 4 beacon, 15 sensor |
+| Advertising interval | `0002` | UINT16 | 1000–10000 ms | 5000 |
+| Sub-advertising interval | `0003` | UINT16 | 20–1000 ms | 100 |
+| Advertising repeats | `0004` | UINT16 | 1–10; only when interval > 2000 ms | 1 |
+| iBeacon ID | `0005` | 20 B | UUID 16 · major 2 · minor 2 | unique |
+| Eddystone ID | `0006` | 16 B | namespace 10 · instance 6 | unique |
+| Command | `0007` | 2 B | `0x0010` write to flash · `0x0011` boot · `0x0012` reset · `0x0013` reset after disconnect · `0x0014` hw voltage · `0x0015` keep alive · `0x0016` restore defaults | — |
+| Password | `0008` | 6 B | 6 digits | `123456` |
+| Movement start / stop | `0013` / `0014` | UINT16 | 0–300 s | 5 / 5 |
+| Hibernate | `0018` | UINT8 | 0 off, 1 on | 1 |
+| Password counter | `0019` | UINT8 + 2 B | tries 0–10, timeout | 0 |
+| Master password (PUK) | `0020` | 8 B | from the MAC | — |
+| Wake-up advertising spam | `0022` | UINT16 | 1–300 s | 30 |
+| RSSI calibration | `0023` | INT8 | −100…127, 127 = default table | 127 |
+| TX power | service `1804` · `2a07` | SINT8 | −14, −11, −8, −5, −2, 2, 4, 8 dBm | 2 |
+
+Read only (Device Information `180A`): manufacturer `2A29`, model `2A24`, hardware `2A27`, firmware
+`2A26`, MAC `652143dc-dec6-4fb1-bd46-3e919d2410a6`, calibration ID `a610249f-913e-46bd-b14f-c6dedc432165`
+(EN12830 devices). Scan-response data: service `e61c0000-7df3-…`, char `e61c0001-7df3-…`, 17 B.
+
+**For a 2 s system:** repeats are the lever — an interval just over 2000 ms with 3 repeats 100 ms apart
+gives three chances per window (≈ 83 % of windows at the 55 % loss measured, against ≈ 45 % today).
+
 ### 3.7 Inconsistencies in the source
 
 - A note says "Lost Beacon Record (AVL ID:10829)"; the tables say 10829 is Found / Away and 10831 is
   Lost. The tables are followed.
 - The BTSID1 page's protocol overview names BTSMP1 (shared text); it applies to both.
-- The GATT table is garbled in the PDF export; re-read the live page before P6.
+- The GATT table is garbled in the PDF's layout but whole in its text layer: reconstructed in §3.8 (10-11-2026). Byte order of the UINT16 values and the password / save sequence are still to be confirmed on a device (or from an EYE App session in the HCI log) before P6 writes anything.
 - "RSSI below the first threshold → Near" does not say which way the sign runs; the tuner treats
   *stronger than T1* as Near. Confirm against the tracker configurator.
 
@@ -394,7 +428,7 @@ Tracker (PDF):
 | P2 | Scanners, registry, merge, repeats, smoothing, not-seen | 3 beacons + 1 sensor live on both platforms | 3–4 d |
 | P3 | House UI: shell, Overview, Devices, Detail, Packets, Proximity, Decode | checked light / dark, wide / narrow, laptop / phone | 6–8 d |
 | P4 | Sessions: CSV logging, list, export, delete; replay | a 1-hour session exported and reopened | 3–4 d |
-| P5 | Android hardening: permission flow, foreground service, scan limits; Windows and Android release builds | 8 h unattended scan on a phone | 3–4 d |
+| P5 | Android hardening: permission flow, foreground service, scan limits; Windows and Android release builds. Found 10-11-2026 (moto g57 power, Android 17): an unfiltered scan is moved to opportunistic after 5 min on this phone (30 min on older Android; fixed: restart every 4 min); with the screen off or locked a LOW_LATENCY scan runs as LOW_POWER, and unfiltered scans are paused — screen-off scanning needs scan filters (0x089A, 0xFEAA, 0x004C, 0xFFFF) and a foreground service | 8 h unattended scan on a phone | 3–4 d |
 | P6 | Configure over GATT (PIN, name, TX power, interval, protocol type, IDs) | settings written and read back | 4–5 d |
 
 ## 10a. Updates over the air
@@ -524,7 +558,7 @@ To decide before phase 2:
 | Visual Studio 2022, workload *Desktop development with C++* | **installed** (Build Tools 2022, Windows SDK 26100) |
 | Android SDK (platform 36, build-tools 36.0.0) + JDK 21 | **installed** — SDK at `%LOCALAPPDATA%\Android\Sdk`, JDK at `C:\Users\GT2575\develop\jdk-21.0.13.0.2+1`; no Android Studio needed |
 | Windows Developer Mode | **on** |
-| Android phone | moto g57 power; ADB over USB did not connect, so APKs go over by file transfer |
+| Android phone | moto g57 power (Android 17, 411 dp wide); ADB over USB works once *USB debugging* is on (10-11-2026): release APKs install over the copy in place (`adb install -r`, same release key, data kept) |
 | Bluetooth LE radio in the laptop | present |
 
 Commands: `flutter pub get` · `flutter analyze` · `flutter test` · `dart test` (in

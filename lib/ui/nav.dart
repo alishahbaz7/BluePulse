@@ -104,9 +104,8 @@ const navItems = <NavItem>[
     id: PageId.configure,
     module: 'Device',
     title: 'Configure',
-    tip: "A device's settings changed over Bluetooth — PIN, name, TX power, interval, IDs",
+    tip: "A device's settings changed over Bluetooth — PIN, name, TX power, interval, repeats, IDs",
     icon: Icons.tune_outlined,
-    soon: true,
   ),
   NavItem(
     id: PageId.settings,
@@ -132,8 +131,3 @@ List<(String, List<NavItem>)> get navModules {
   return out;
 }
 
-/// Every pill string the rail can show, and what it means. Keep in step with the rail.
-const pillLegend = <String, String>{
-  'Soon': 'Not built yet',
-  'BT': 'Needs Bluetooth on and permitted',
-};

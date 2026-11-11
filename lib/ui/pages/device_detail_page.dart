@@ -14,11 +14,12 @@ import '../theme.dart';
 import '../widgets/arrange_charts.dart';
 import '../widgets/charts.dart';
 import '../widgets/common.dart';
+import '../widgets/device_card.dart' show isPhone;
 import '../widgets/device_name.dart';
 import '../widgets/inspector.dart';
 import '../widgets/rx_log_card.dart';
-import 'devices_page.dart';
-import 'overview_page.dart';
+import 'configure_page.dart';
+import '../widgets/device_pills.dart';
 
 /// One device: a pinned bar (back, name, the time window every chart and figure follows, Arrange),
 /// then its header, tiles, pings, the charts in the person's own arrangement, its received packets
@@ -143,23 +144,20 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     final notSeen = d.isNotSeen(now, c.settings.notSeenMinSeconds);
     return PanelCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Text(tag ?? d.name ?? 'Unnamed device',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: t.text)),
-              ModelPill(d.model),
-              Pill(notSeen ? 'Not seen' : 'In view', tone: notSeen ? Tone.muted : Tone.ok),
-              ProximityPill(r.proximityOf(d, now)),
-              if (d.lowBattery) const Pill('Low battery', tone: Tone.warn),
-              const HoldTip(
-                message: 'This device gets every packet and the fastest refresh while its page is open',
-                child: Pill('In focus', tone: Tone.accent),
-              ),
-            ]),
-          ),
-          const SizedBox(width: 10),
-          Wrap(spacing: 8, runSpacing: 8, children: [
+        LayoutBuilder(builder: (context, box) {
+          final title = Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text(tag ?? d.name ?? (d.isSimulated ? 'Simulated device' : 'Unnamed device'),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: t.text)),
+            ModelPill(d.model),
+            Pill(notSeen ? 'Not seen' : 'In view', tone: notSeen ? Tone.muted : Tone.ok),
+            ProximityPill(r.proximityOf(d, now)),
+            if (d.lowBattery) const Pill('Low battery', tone: Tone.warn),
+            const HoldTip(
+              message: 'This device gets every packet and the fastest refresh while its page is open',
+              child: Pill('In focus', tone: Tone.accent),
+            ),
+          ]);
+          final actions = Wrap(spacing: 8, runSpacing: 8, children: [
             OutlinedButton.icon(
               onPressed: () => showRenameDialog(context, d),
               icon: const Icon(Icons.edit_outlined, size: 17),
@@ -171,12 +169,35 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                   size: 17, color: book.pinned(d.mac) ? t.accent : null),
               label: const Text('Keep in focus'),
             ),
-          ]),
-        ]),
+            if (d.model.isEye && !d.isSimulated)
+              OutlinedButton.icon(
+                onPressed: () => openConfigure(context, d),
+                icon: const Icon(Icons.tune_outlined, size: 17),
+                label: const Text('Configure'),
+              ),
+          ]);
+          // On a phone the buttons go under the name: beside it they left it a sliver one letter wide.
+          if (box.maxWidth < 560) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [title, const SizedBox(height: 12), actions]);
+          }
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: title),
+            const SizedBox(width: 10),
+            actions,
+          ]);
+        }),
         const SizedBox(height: 14),
         Wrap(spacing: 28, runSpacing: 12, children: [
           if (tag != null) Fact('Advertised name', d.name ?? '—'),
-          Fact('MAC', d.mac, mono: true),
+          if (d.isSimulated) ...[
+            Fact('Simulator', d.mac,
+                mono: true, tip: 'Sent by the BluePulse simulator on another device, which carries this ID in each packet'),
+            Fact('Last address', d.lastAddress ?? '—',
+                mono: true,
+                tip: 'The simulating PC or phone picks a random address and keeps changing it (Windows with every '
+                    'burst), so its packets are kept together by the ID instead'),
+          ] else
+            Fact('MAC', d.mac, mono: true),
           if (id != null && id.isEddystone) ...[
             Fact('Namespace', id.namespaceHex, mono: true),
             Fact('Instance', id.instanceHex, mono: true),
@@ -202,25 +223,12 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     return [
       TileRow(minWidth: 150, tiles: [
         StatTile(label: 'RSSI', value: d.rssi?.toString() ?? '—', secondary: 'dBm', tip: 'Last packet'),
-        StatTile(
-          label: 'Smoothed',
-          value: d.smoothed?.round().toString() ?? '—',
-          secondary: 'dBm',
-          tone: Tone.accent,
-          tip: 'Averaged over ${c.settings.averagingSeconds} s',
-        ),
         StatTile(label: 'Distance', value: formatDistance(r.distanceOf(d)), tip: 'Estimate — model in Settings'),
         StatTile(
           label: 'Battery',
           value: d.batteryMv?.toString() ?? '—',
           secondary: d.batteryMv == null ? null : 'mV',
           tone: d.lowBattery ? Tone.warn : Tone.neutral,
-        ),
-        StatTile(
-          label: 'Rate',
-          value: d.packetsPerSecond(now).toStringAsFixed(1),
-          secondary: '/s',
-          tip: 'Packets per second over the last 10 seconds',
         ),
         StatTile(label: 'Readings', value: formatCount(d.readings), secondary: '${formatCount(d.packets)} packets'),
       ]),
@@ -442,7 +450,7 @@ class _Bar extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     return LayoutBuilder(builder: (context, box) {
-      final narrow = box.maxWidth < 640;
+      final narrow = box.maxWidth < 640 || isPhone(context);
       return Row(children: [
         TextButton.icon(
           onPressed: onBack,
@@ -460,12 +468,20 @@ class _Bar extends StatelessWidget {
         ),
         HoldTip(
           message: 'Every chart and the ping figures cover this window',
-          child: SegmentedButton<int>(
-            showSelectedIcon: false,
-            segments: [for (final m in DeviceBook.windowChoices) ButtonSegment(value: m, label: Text('$m min'))],
-            selected: {window},
-            onSelectionChanged: (s) => onWindow(s.first),
-          ),
+          // A phone has no room for three segments beside Back and Arrange.
+          child: narrow
+              ? DropdownButton<int>(
+                  value: window,
+                  underline: const SizedBox.shrink(),
+                  items: [for (final m in DeviceBook.windowChoices) DropdownMenuItem(value: m, child: Text('$m min'))],
+                  onChanged: (m) => m == null ? null : onWindow(m),
+                )
+              : SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  segments: [for (final m in DeviceBook.windowChoices) ButtonSegment(value: m, label: Text('$m min'))],
+                  selected: {window},
+                  onSelectionChanged: (s) => onWindow(s.first),
+                ),
         ),
         const SizedBox(width: 8),
         if (narrow)

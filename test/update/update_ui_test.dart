@@ -138,10 +138,12 @@ void main() {
 
   testWidgets('Settings shows the update state', (tester) async {
     final c = await pump(tester, UpdateService.disabled(current: SemVer.parse('1.0.0'), disabledReason: 'The releases repository is not set in this build'), page: PageId.settings);
-    await tester.scrollUntilVisible(find.text('Updates'), 300,
+    await tester.scrollUntilVisible(find.text('Check for updates'), 300,
         scrollable: find.descendant(of: find.byType(SettingsPage), matching: find.byType(Scrollable)).first);
+    expect(find.text('About'), findsOneWidget);
+    expect(find.descendant(of: find.byType(SettingsPage), matching: find.textContaining('Version ')), findsOneWidget,
+        reason: 'in the About card (the rail names the version too)');
     expect(find.text('The releases repository is not set in this build'), findsOneWidget);
-    expect(find.text('Check now'), findsOneWidget);
     await finish(tester, c);
   });
 }

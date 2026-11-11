@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -39,6 +40,31 @@ class FakeTransport implements UpdateTransport {
     into.writeAsBytesSync(bytes);
     onProgress?.call(bytes.length, bytes.length);
     return sha256.convert(bytes).toString();
+  }
+}
+
+/// A channel that misbehaves the ways nobody plans for: never answers ([hang]), or throws something
+/// that is not an [UpdateException] — on the check unless [manifest] is given, on the first
+/// [downloadFailures] downloads after that.
+class _Unruly implements UpdateTransport {
+  _Unruly({this.hang = false, this.manifest, this.files = const {}, this.downloadFailures = 0});
+
+  final bool hang;
+  final String? manifest;
+  final Map<String, List<int>> files;
+  int downloadFailures;
+
+  @override
+  Future<String> getText(Uri url) async {
+    if (hang) return Completer<String>().future;
+    if (manifest == null) throw StateError('nobody planned for this');
+    return manifest!;
+  }
+
+  @override
+  Future<String> download(Uri url, File into, {void Function(int, int?)? onProgress, bool Function()? cancelled}) async {
+    if (downloadFailures-- > 0) throw ArgumentError('nobody planned for this either');
+    return FakeTransport(manifest, files).download(url, into, onProgress: onProgress, cancelled: cancelled);
   }
 }
 
@@ -134,6 +160,54 @@ void main() {
         FakeTransport(null, const {}, fail: UpdateException('No connection to github.com')));
     await s2.check();
     expect(s2.error, 'No connection to github.com');
+  });
+
+  test('a broken latest.json (a version written as a number) fails the check quietly', () async {
+    final broken = jsonEncode({'app': 'BluePulse', 'version': 2, 'notes': 7, 'assets': {}});
+    final s = service(TestHost(fakeInstall(tmp, ['1.0.0'])), FakeTransport(broken, const {}));
+    await s.check();
+    expect(s.stage, UpdateStage.failed);
+    expect(s.error, contains('no valid version'));
+    expect(s.busy, isFalse, reason: 'never left at "Checking…"');
+  });
+
+  test('whatever goes wrong — a hang, an error nobody planned for — the check ends and this version runs on', () async {
+    final hanging = UpdateService(
+      current: SemVer.parse('1.0.0'),
+      host: TestHost(fakeInstall(tmp, ['1.0.0'])),
+      transport: _Unruly(hang: true),
+      manifestUrl: manifestUrl,
+      checkTimeout: const Duration(milliseconds: 50),
+    );
+    await hanging.check();
+    expect(hanging.stage, UpdateStage.failed);
+    expect(hanging.error, 'github.com did not answer in time');
+
+    final s = UpdateService(
+      current: SemVer.parse('1.0.0'),
+      host: TestHost(fakeInstall(tmp, ['1.0.0'])),
+      transport: _Unruly(),
+      manifestUrl: manifestUrl,
+    );
+    await expectLater(s.check(), completes);
+    expect(s.stage, UpdateStage.failed);
+    expect(s.error, contains('StateError'));
+    expect(s.busy, isFalse);
+  });
+
+  test('a download that fails in an unplanned way ends as failed, installs nothing, and can be tried again', () async {
+    final files = {'BluePulse-v1.1.0.zip': releaseZip('1.1.0')};
+    final layout = fakeInstall(tmp, ['1.0.0'], current: '1.0.0');
+    final t = _Unruly(manifest: manifestFor('1.1.0', files), files: files, downloadFailures: 1);
+    final s = UpdateService(current: SemVer.parse('1.0.0'), host: TestHost(layout), transport: t, manifestUrl: manifestUrl);
+    await s.check();
+    await s.downloadAndInstall();
+    expect(s.stage, UpdateStage.failed);
+    expect(s.error, contains('this version is unchanged'));
+    expect(layout.installed().map((v) => '${v.version}'), ['1.0.0']);
+
+    await s.downloadAndInstall();
+    expect(s.stage, UpdateStage.ready, reason: s.error);
   });
 
   test('a release without this platform\'s package says so', () async {

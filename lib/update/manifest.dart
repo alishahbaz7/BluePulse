@@ -61,12 +61,16 @@ class UpdateManifest {
     }
     if (json is! Map<String, dynamic>) throw const FormatException('latest.json is not an object');
 
+    // A value of the wrong type (a version written as a number) is a mistake in the file, said as one —
+    // never a crash halfway through a check.
+    String? str(Object? v) => v is String ? v : null;
+
     final app = json['app'];
     if (app != expectedApp) throw FormatException('latest.json is for "$app", not $expectedApp');
-    final version = SemVer.tryParse(json['version'] as String?);
+    final version = SemVer.tryParse(str(json['version']));
     if (version == null) throw FormatException('latest.json has no valid version: ${json['version']}');
     final minimum = json['minimumVersion'];
-    final minVersion = minimum == null ? null : SemVer.tryParse(minimum as String?);
+    final minVersion = minimum == null ? null : SemVer.tryParse(str(minimum));
     if (minimum != null && minVersion == null) {
       throw FormatException('latest.json has an invalid minimumVersion: $minimum');
     }
@@ -78,7 +82,7 @@ class UpdateManifest {
         final a = rawAssets[p.name];
         if (a is! Map<String, dynamic>) continue;
         final file = a['file'];
-        final sha = (a['sha256'] as String?)?.toLowerCase();
+        final sha = str(a['sha256'])?.toLowerCase();
         if (file is! String || file.isEmpty || file.contains('/') || file.contains(r'\')) {
           throw FormatException('latest.json: ${p.name} asset has no valid file name');
         }
@@ -89,15 +93,16 @@ class UpdateManifest {
         if (url.scheme != 'https' && url.scheme != 'http') {
           throw FormatException('latest.json: ${p.name} asset URL is not http(s)');
         }
-        assets[p] = UpdateAsset(url: url, file: file, sha256: sha, size: (a['size'] as num?)?.toInt());
+        final size = a['size'];
+        assets[p] = UpdateAsset(url: url, file: file, sha256: sha, size: size is num ? size.toInt() : null);
       }
     }
 
     return UpdateManifest(
       app: app as String,
       version: version,
-      notes: (json['notes'] as String?)?.trim() ?? '',
-      published: DateTime.tryParse(json['published'] as String? ?? ''),
+      notes: str(json['notes'])?.trim() ?? '',
+      published: DateTime.tryParse(str(json['published']) ?? ''),
       minimumVersion: minVersion,
       assets: assets,
     );

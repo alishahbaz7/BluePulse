@@ -11,6 +11,7 @@ import '../format.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/data_grid.dart';
+import '../../core/error_log.dart';
 
 /// Every live scan saved from Start scan to Stop scan, one CSV each: listed here to open, export or
 /// delete.
@@ -290,6 +291,7 @@ class _SessionsPageState extends State<SessionsPage> {
         await SharePlus.instance.share(ShareParams(files: [XFile(s.csv.path, mimeType: 'text/csv')], subject: s.name));
       }
     } catch (e) {
+      errorLog.warn('files', 'Session not saved or shared', error: e);
       messenger.showSnackBar(SnackBar(content: Text('Not saved: ${e is FileSystemException ? e.message : e.runtimeType}')));
     } finally {
       if (mounted) setState(() => _busy = false);

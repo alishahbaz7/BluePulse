@@ -17,6 +17,7 @@ class TxCapabilities {
     this.txPower = false,
     this.permitted = true,
     this.bluetoothOn = true,
+    this.reservedBytes = 0,
   });
 
   const TxCapabilities.unsupported(String this.reason)
@@ -26,7 +27,8 @@ class TxCapabilities {
         scanResponse = false,
         txPower = false,
         permitted = true,
-        bluetoothOn = true;
+        bluetoothOn = true,
+        reservedBytes = 0;
 
   final bool supported;
 
@@ -43,6 +45,10 @@ class TxCapabilities {
   final bool txPower;
   final bool permitted;
   final bool bluetoothOn;
+
+  /// Bytes of each packet the system fills itself (Windows adds its own Flags), kept free so the
+  /// simulator tag never overfills one.
+  final int reservedBytes;
 }
 
 /// Sends advertisements. One implementation per platform; tests use a fake.
@@ -173,12 +179,14 @@ class AndroidAdvertiser extends BleAdvertiser {
 
 /// Windows: a publisher per transmission. Windows sets the advertising rate itself and cannot send
 /// a name or a scan response, so the simulator sends a short burst every interval (see
-/// SimulatorService) and puts the scan response's data in its own advertisement.
+/// SimulatorService) and puts the scan response's data in its own advertisement. Every burst goes
+/// out from a new random address (checked with a phone, 10-11-2026): the simulator tag is what lets
+/// a receiver keep the bursts together.
 class WindowsAdvertiser extends BleAdvertiser {
   static const _channel = MethodChannel('bluepulse_ble_windows');
 
   @override
-  Future<TxCapabilities> capabilities() async => const TxCapabilities(supported: true, txPower: true);
+  Future<TxCapabilities> capabilities() async => const TxCapabilities(supported: true, txPower: true, reservedBytes: 3);
 
   @override
   Future<String?> start({required adv, scanResponse, required intervalMs, txPowerDbm, name}) async {

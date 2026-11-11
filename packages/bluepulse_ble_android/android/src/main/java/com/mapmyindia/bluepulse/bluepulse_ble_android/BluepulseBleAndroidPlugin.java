@@ -47,6 +47,7 @@ public class BluepulseBleAndroidPlugin
   private static final String PREFS = "bluepulse_ble_tx";
   private static final String KEY_ORIGINAL_NAME = "originalName";
   private static final int PERMISSION_REQUEST = 0xB1E7;
+  private static final int NOTIFICATION_REQUEST = 0xB1E8;
 
   private MethodChannel channel;
   private Context context;
@@ -58,6 +59,9 @@ public class BluepulseBleAndroidPlugin
   private AdvertisingSet set;
   private AdvertisingSetCallback callback;
 
+  /** The name just given back to the phone, until Android reports it (renaming takes a moment). */
+  private String restoring;
+
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
     context = binding.getApplicationContext();
@@ -68,7 +72,8 @@ public class BluepulseBleAndroidPlugin
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-    stopAdvertising();
+    stopAdvertising(true);
+    ScanKeepAliveService.stop(context);
     channel.setMethodCallHandler(null);
   }
 
@@ -112,7 +117,15 @@ public class BluepulseBleAndroidPlugin
           update(call, result);
           break;
         case "stop":
-          stopAdvertising();
+          stopAdvertising(true);
+          result.success(null);
+          break;
+        case "keepAliveStart":
+          keepAliveStart(call.argument("text"));
+          result.success(null);
+          break;
+        case "keepAliveStop":
+          ScanKeepAliveService.stop(context);
           result.success(null);
           break;
         default:
@@ -123,6 +136,19 @@ public class BluepulseBleAndroidPlugin
     } catch (Exception e) {
       result.error("failed", e.getClass().getSimpleName() + ": " + e.getMessage(), null);
     }
+  }
+
+  /**
+   * Holds the app in the foreground while it scans (see ScanKeepAliveService). Android 13+ shows
+   * the notification only with permission, asked once here; without it the service still runs.
+   */
+  private void keepAliveStart(String text) {
+    if (Build.VERSION.SDK_INT >= 33
+        && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        && activity != null) {
+      activity.getActivity().requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_REQUEST);
+    }
+    ScanKeepAliveService.start(context, text);
   }
 
   private BluetoothAdapter adapter() {
@@ -218,7 +244,9 @@ public class BluepulseBleAndroidPlugin
       result.error("unsupported", "This phone's Bluetooth cannot advertise", null);
       return;
     }
-    stopAdvertising();
+    // A new start replaces the running set without giving the phone its name back first: restoring
+    // and renaming again at once raced, and could save the simulated name as the phone's own.
+    stopAdvertising(false);
 
     final Map<String, Object> adv = call.argument("adv");
     final Map<String, Object> sr = call.argument("scanResponse");
@@ -273,6 +301,7 @@ public class BluepulseBleAndroidPlugin
 
     final boolean wantsName = name != null && !name.isEmpty();
     final AdvertisingSetCallback cb = callback;
+    if (!wantsName) restoreName();
     if (wantsName && !name.equals(a.getName())) {
       saveOriginalName(a.getName());
       a.setName(name);
@@ -320,8 +349,9 @@ public class BluepulseBleAndroidPlugin
     result.success(null);
   }
 
+  /** Stops the running set; {@code restore} gives the phone its own name back (not when a new start follows). */
   @SuppressLint("MissingPermission")
-  private void stopAdvertising() {
+  private void stopAdvertising(boolean restore) {
     BluetoothAdapter a = adapter();
     if (callback != null && a != null && a.getBluetoothLeAdvertiser() != null) {
       try {
@@ -336,7 +366,7 @@ public class BluepulseBleAndroidPlugin
       pendingStart.error("stopped", "Stopped before it started", null);
       pendingStart = null;
     }
-    restoreName();
+    if (restore) restoreName();
   }
 
   /** One packet's fields as Android advertising data. Flags are added by Android only when connectable. */
@@ -397,11 +427,14 @@ public class BluepulseBleAndroidPlugin
     return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
   }
 
-  private void saveOriginalName(String original) {
+  private void saveOriginalName(String current) {
     // Keep the first original: renaming twice must not save the simulated name as the original.
-    if (original != null && !prefs().contains(KEY_ORIGINAL_NAME)) {
-      prefs().edit().putString(KEY_ORIGINAL_NAME, original).apply();
-    }
+    if (prefs().contains(KEY_ORIGINAL_NAME)) return;
+    // Stop then Start again quickly: Android may still report the simulated name while the phone's
+    // own is being put back, so the name being put back is the original.
+    if (restoring != null && restoring.equals(current)) restoring = null;
+    String original = restoring != null ? restoring : current;
+    if (original != null) prefs().edit().putString(KEY_ORIGINAL_NAME, original).apply();
   }
 
   @SuppressLint("MissingPermission")
@@ -412,6 +445,7 @@ public class BluepulseBleAndroidPlugin
     try {
       if (a != null && a.isEnabled()) {
         a.setName(original);
+        restoring = original;
         prefs().edit().remove(KEY_ORIGINAL_NAME).apply();
       }
     } catch (SecurityException ignored) {

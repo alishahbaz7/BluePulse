@@ -36,6 +36,7 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["appLabel"] = "BluePulse"
     }
 
     signingConfigs {
@@ -50,6 +51,12 @@ android {
     }
 
     buildTypes {
+        // A development copy installs beside the release one (its own ID, name and settings), so a phone
+        // can run both: the release copy keeps its data, the dev copy gets hot reload.
+        debug {
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "BluePulse DEV"
+        }
         release {
             // Without key.properties a release build is debug-signed: fine on a desk, never published
             // (tool/package_release.dart refuses it).

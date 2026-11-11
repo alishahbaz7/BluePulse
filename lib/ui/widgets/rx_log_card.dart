@@ -15,6 +15,7 @@ import '../theme.dart';
 import 'common.dart';
 import 'data_grid.dart';
 import 'device_name.dart';
+import '../../core/error_log.dart';
 
 /// Where logs go: Documents\BluePulse\logs on Windows, the app's own documents folder on Android.
 Future<Directory> rxLogsDir() => appFilesDir('logs');
@@ -152,6 +153,7 @@ class _RxLogCardState extends State<RxLogCard> {
         await SharePlus.instance.share(ShareParams(files: [XFile(file.path, mimeType: 'text/csv')], subject: name));
       }
     } catch (e) {
+      errorLog.warn('files', 'Device log not saved', error: e);
       messenger.showSnackBar(SnackBar(content: Text('Log not saved: ${e.runtimeType}')));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -168,6 +170,7 @@ class _RxLogCardState extends State<RxLogCard> {
       await c.registry.startRecording(widget.device, file);
       messenger.showSnackBar(SnackBar(content: Text('Recording to ${p.basename(file.path)}')));
     } catch (e) {
+      errorLog.warn('files', 'Device recording did not start', error: e);
       messenger.showSnackBar(SnackBar(content: Text('Recording did not start: ${e.runtimeType}')));
     } finally {
       if (mounted) setState(() => _busy = false);

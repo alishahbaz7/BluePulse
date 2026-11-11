@@ -9,6 +9,7 @@ import '../scanner/scanner.dart';
 import 'device.dart';
 import 'device_book.dart';
 import 'rx_log.dart';
+import 'sensor_log.dart';
 import 'session_store.dart';
 import 'signal.dart';
 
@@ -58,11 +59,13 @@ class PacketEntry {
       }
     }
     if (data.name != null) parts.add('"${data.name}"');
+    if (decoded.simulatorId != null) parts.add('BluePulse simulator');
     return parts.isEmpty ? '—' : parts.join(' · ');
   }
 }
 
-/// Every device heard this session, merged by MAC.
+/// Every device heard this session, merged by MAC — or, for the BluePulse simulator, whose address
+/// changes (every burst from Windows), by the simulated device's ID ([simulatorKey]).
 ///
 /// Focus ([book]): with nothing in focus every packet is applied and the screen refreshes four times
 /// a second. With devices in focus, those get every packet and up to ten refreshes a second, while
@@ -79,6 +82,9 @@ class DeviceRegistry extends ChangeNotifier {
   final DeviceBook book;
   final _devices = <String, EyeDevice>{};
   final _smoothers = <String, RssiSmoother>{};
+
+  /// Simulated devices heard, by key: beacon frames sent without the tag join these.
+  final _simulators = <String>{};
   final packets = Ring<PacketEntry>(500);
   final _perMinute = <int, int>{};
   final _perSecond = <int, int>{};
@@ -129,6 +135,7 @@ class DeviceRegistry extends ChangeNotifier {
   void clear() {
     _devices.clear();
     _smoothers.clear();
+    _simulators.clear();
     packets.clear();
     _perMinute.clear();
     _perSecond.clear();
@@ -138,9 +145,43 @@ class DeviceRegistry extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The device a packet belongs to: its MAC, or a simulated device's key. A beacon frame Windows
+  /// sends in its own burst has no room for the tag; it joins its simulator through the beacon ID.
+  String _keyOf(ScanEvent e) {
+    final tag = e.data.manufacturerData[simulatorCompanyId];
+    final id = tag == null ? null : decodeSimulatorTag(tag);
+    if (id != null) return simulatorKey(id);
+    if (_simulators.isEmpty || _devices.containsKey(e.deviceId)) return e.deviceId;
+    final beacon = decodeAdvertisement(e.data).beaconId;
+    if (beacon == null) return e.deviceId;
+    final key = simulatorKey(simulatorIdForBeacon(beacon));
+    return _simulators.contains(key) ? key : e.deviceId;
+  }
+
+  /// A simulator's beacon frames heard before its first tagged packet were listed under their
+  /// one-off addresses; they belong to it, with the beacon ID they carried.
+  void _absorbStrays(EyeDevice sim) {
+    final strays = [
+      for (final MapEntry(key: mac, value: d) in _devices.entries)
+        if (mac != sim.mac &&
+            d.beaconId != null &&
+            !_recorders.containsKey(mac) &&
+            simulatorKey(simulatorIdForBeacon(d.beaconId!)) == sim.mac)
+          d,
+    ];
+    for (final d in strays) {
+      sim.beaconId ??= d.beaconId;
+      sim.txPower1m ??= d.txPower1m;
+      sim.merged = d.merged.merge(sim.merged);
+      _devices.remove(d.mac);
+      _smoothers.remove(d.mac);
+    }
+  }
+
   void ingest(ScanEvent e) {
-    var d = _devices[e.deviceId];
-    final fast = book.fast(e.deviceId);
+    final key = _keyOf(e);
+    var d = _devices[key];
+    final fast = book.fast(key);
     if (d != null) {
       _received++;
       final second = e.time.millisecondsSinceEpoch ~/ 1000;
@@ -155,6 +196,7 @@ class DeviceRegistry extends ChangeNotifier {
       if (!fast && !sameEvent && since < backgroundInterval(e.time)) {
         final readingsBefore = d.readings;
         d.touch(e.time);
+        d.lastAddress = e.deviceId;
         _keep(d, e);
         _countReading(d, readingsBefore, e.time);
         _schedule(fast: false);
@@ -164,22 +206,29 @@ class DeviceRegistry extends ChangeNotifier {
     final decoded = decodeAdvertisement(e.data);
     if (d == null) {
       final eyeName = e.data.name?.startsWith('ID1_') ?? false;
-      // Only beacons and EYE devices are tracked; phones, earbuds and the rest are ignored.
-      if (!decoded.isTeltonika && !decoded.isBeacon && !eyeName) return;
-      d = _devices[e.deviceId] = EyeDevice(e.deviceId, firstSeen: e.time);
+      final simulated = isSimulatorKey(key);
+      // Only beacons, EYE devices and simulated ones are tracked; phones, earbuds and the rest are
+      // ignored.
+      if (!decoded.isTeltonika && !decoded.isBeacon && !eyeName && !simulated) return;
+      d = _devices[key] = EyeDevice(key, firstSeen: e.time);
+      if (simulated) {
+        _simulators.add(key);
+        _absorbStrays(d);
+      }
       _received++;
       final second = e.time.millisecondsSinceEpoch ~/ 1000;
       _perSecond[second] = (_perSecond[second] ?? 0) + 1;
     }
-    final smoother = _smoothers.putIfAbsent(e.deviceId, () => RssiSmoother(settings.averagingSeconds))
+    final smoother = _smoothers.putIfAbsent(key, () => RssiSmoother(settings.averagingSeconds))
       ..timeoutSeconds = settings.averagingSeconds;
     final readingsBefore = d.readings;
     final sinceEvent = e.time.difference(d.appliedEventStart).inMilliseconds;
     if (sinceEvent < 0 || sinceEvent > eventSpanMs) d.appliedEventStart = e.time;
     d.apply(time: e.time, rssi: e.rssi, data: e.data, decoded: decoded, smoother: smoother);
+    d.lastAddress = e.deviceId;
     _keep(d, e);
     _countReading(d, readingsBefore, e.time);
-    packets.add(PacketEntry(++_seq, e.time, e.deviceId, e.rssi, e.data, decoded,
+    packets.add(PacketEntry(++_seq, e.time, key, e.rssi, e.data, decoded,
         raw: e.raw, scanResponse: e.scanResponse));
     _schedule(fast: fast);
   }
@@ -189,16 +238,24 @@ class DeviceRegistry extends ChangeNotifier {
   void _keep(EyeDevice d, ScanEvent e) {
     final entry = d.recordRx(e);
     _recorders[d.mac]?.write(entry);
+    final log = sensorLog;
+    if (log != null && log.covers(d.mac)) log.write(entry, mac: d.mac, name: book.tagOf(d.mac) ?? d.name);
     session?.write(entry, mac: d.mac, name: d.name, tag: book.tagOf(d.mac));
   }
 
   /// The session being recorded: every packet from every tracked device, from Start to Stop scan.
   SessionWriter? session;
 
+  /// The multi-device log (Devices page → Log): every packet from the devices it names.
+  SensorLog? sensorLog;
+
   // Recording a device's packets to a CSV file while they arrive.
   final _recorders = <String, RxRecorder>{};
 
   RxRecorder? recorder(String mac) => _recorders[mac];
+
+  /// Devices being recorded now.
+  int get recordings => _recorders.length;
 
   Future<RxRecorder> startRecording(EyeDevice d, File file) async {
     await _recorders.remove(d.mac)?.stop();

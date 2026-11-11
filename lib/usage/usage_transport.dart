@@ -36,6 +36,13 @@ class HttpUsageTransport implements UsageTransport {
 
   @override
   Future<Object?> send(Map<String, Object?> report) async {
+    final List<int> body;
+    try {
+      body = utf8.encode(jsonEncode(report));
+    } catch (e) {
+      // Sending it again cannot help: drop it rather than let it block every report after it.
+      throw UsageSendException('The report could not be written (${e.runtimeType})', rejected: true);
+    }
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10)
       ..idleTimeout = const Duration(seconds: 15)
@@ -47,11 +54,11 @@ class HttpUsageTransport implements UsageTransport {
         req.headers.set('apikey', key);
         if (_isJwt(key)) req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
       }
-      final body = utf8.encode(jsonEncode(report));
       req.contentLength = body.length;
       req.add(body);
       final r = await req.close().timeout(const Duration(seconds: 20));
-      final text = await r.transform(utf8.decoder).join().timeout(const Duration(seconds: 20));
+      // A proxy or Wi-Fi sign-in page may answer with anything; never fail on its characters.
+      final text = await r.transform(const Utf8Decoder(allowMalformed: true)).join().timeout(const Duration(seconds: 20));
       if (r.statusCode >= 200 && r.statusCode < 300) {
         try {
           return text.isEmpty ? null : jsonDecode(text);
@@ -63,14 +70,19 @@ class HttpUsageTransport implements UsageTransport {
         'HTTP ${r.statusCode} from ${url.host}${_reason(text)}',
         rejected: r.statusCode == 400 || r.statusCode == 422,
       );
+    } on UsageSendException {
+      rethrow;
     } on SocketException {
       throw UsageSendException('No connection to ${url.host}');
-    } on HandshakeException {
+    } on TlsException {
       throw UsageSendException('Secure connection to ${url.host} failed');
     } on TimeoutException {
       throw UsageSendException('${url.host} did not answer in time');
     } on HttpException {
       throw UsageSendException('${url.host} closed the connection');
+    } catch (e) {
+      // Whatever else the network does: kept, and tried again later.
+      throw UsageSendException('Not sent to ${url.host} (${e.runtimeType})');
     } finally {
       client.close(force: true);
     }

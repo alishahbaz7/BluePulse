@@ -74,4 +74,53 @@ void main() {
     expect(b.minor, 65535);
     expect(b.measuredPower, -61);
   });
+
+  group('BluePulse simulator tag', () {
+    test('the ID comes back as sent, and the tag is 10 bytes on air', () {
+      for (final id in [0, 1, 0x1A2B3C4D, 0xFFFFFFFF]) {
+        expect(decodeSimulatorTag(encodeSimulatorTag(id)), id);
+      }
+      final ad = AdvertisementData(manufacturerData: {simulatorCompanyId: encodeSimulatorTag(0x1A2B3C4D)});
+      expect(ad.toBytes(), hasLength(simulatorTagBytes));
+      expect(decodeAdvertisement(AdvertisementData.parse(ad.toBytes())).simulatorId, 0x1A2B3C4D);
+      expect(simulatorKey(0x1A2B3C4D), 'SIM-1A2B3C4D');
+      expect(simulatorKey(0xAB), 'SIM-000000AB');
+    });
+
+    test("other devices' 0xFFFF data is not taken for the tag", () {
+      expect(decodeSimulatorTag(parseHex('42 50 01 02')), isNull, reason: 'too short');
+      expect(decodeSimulatorTag(parseHex('01 02 03 04 05 06')), isNull, reason: 'not BP');
+      final other = AdvertisementData(manufacturerData: {simulatorCompanyId: parseHex('00 11 22')});
+      expect(decodeAdvertisement(other).simulatorId, isNull);
+    });
+
+    test('a beacon gives the same simulator ID every time, and different beacons different IDs', () {
+      final a = BeaconId.eddystone(parseHex('B1E5B1E5B1E5B1E5B1E5'), parseHex('0B154E2D0055'));
+      final a2 = BeaconId.eddystone(parseHex('B1E5B1E5B1E5B1E5B1E5'), parseHex('0B154E2D0055'));
+      final b = BeaconId.eddystone(parseHex('B1E5B1E5B1E5B1E5B1E5'), parseHex('0B154E2D0056'));
+      final i = BeaconId.iBeacon(parseHex('B1E5A11C0B1E4F00A000000000000001'), 1, 1);
+      expect(simulatorIdForBeacon(a), simulatorIdForBeacon(a2));
+      expect({simulatorIdForBeacon(a), simulatorIdForBeacon(b), simulatorIdForBeacon(i)}, hasLength(3));
+      for (final id in [a, b, i]) {
+        expect(simulatorIdForBeacon(id), inInclusiveRange(0, 0xFFFFFFFF));
+      }
+    });
+
+    test('FNV-1a matches the reference for a known input', () {
+      // The kind's index (0, Eddystone) and sixteen 0x61 bytes, against the textbook FNV-1a loop
+      // in 64-bit arithmetic.
+      var h = 0x811C9DC5;
+      for (final b in [0, ...List.filled(16, 0x61)]) {
+        h = ((h ^ b) * 16777619) & 0xFFFFFFFF;
+      }
+      final id = BeaconId.eddystone(Uint8List.fromList(List.filled(10, 0x61)), Uint8List.fromList(List.filled(6, 0x61)));
+      expect(simulatorIdForBeacon(id), h);
+    });
+
+    test('the inspector names the tag', () {
+      final ad = AdvertisementData(manufacturerData: {simulatorCompanyId: encodeSimulatorTag(0x1A2B3C4D)});
+      final labels = annotateRaw(ad.toBytes()).fields.map((f) => '${f.label}=${f.value}').toList();
+      expect(labels, containsAll(['BluePulse simulator=BP', 'Simulated device=SIM-1A2B3C4D']));
+    });
+  });
 }

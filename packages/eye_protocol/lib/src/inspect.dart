@@ -6,6 +6,7 @@ import 'byte_field.dart';
 import 'eddystone.dart';
 import 'hex.dart';
 import 'ibeacon.dart';
+import 'simulator_tag.dart';
 import 'teltonika.dart';
 
 /// A packet with every byte labelled — the model behind the packet inspector.
@@ -30,6 +31,7 @@ class AnnotatedPacket {
 String _companyName(int id) => switch (id) {
       teltonikaCompanyId => 'Teltonika',
       appleCompanyId => 'Apple',
+      simulatorCompanyId => 'kept for tests',
       _ => 'company',
     };
 
@@ -52,6 +54,7 @@ AnnotatedPacket annotateStructures(List<AdStructure> structures, {String? error}
         final inner = switch (id) {
           teltonikaCompanyId => decodeTeltonika(payload).fields,
           appleCompanyId => decodeIBeacon(payload)?.fields ?? const <ByteField>[],
+          simulatorCompanyId => _simulatorFields(payload),
           _ => const <ByteField>[],
         };
         _addInner(fields, inner, body + 2, payload.length);
@@ -91,6 +94,15 @@ AnnotatedPacket annotateRaw(Uint8List raw) {
 }
 
 /// Shifts a decoder's payload-relative fields into place and labels any bytes they left out.
+List<ByteField> _simulatorFields(Uint8List payload) {
+  final id = decodeSimulatorTag(payload);
+  if (id == null) return const [];
+  return [
+    const ByteField(0, 2, 'BluePulse simulator', 'BP'),
+    ByteField(2, 4, 'Simulated device', simulatorKey(id)),
+  ];
+}
+
 void _addInner(List<ByteField> out, List<ByteField> inner, int base, int length) {
   var covered = 0;
   for (final f in inner) {

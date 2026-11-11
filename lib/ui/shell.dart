@@ -7,6 +7,7 @@ import '../scanner/scanner.dart';
 import '../update/update_service.dart';
 import '../version.dart';
 import 'nav.dart';
+import 'pages/configure_page.dart';
 import 'pages/decode_page.dart';
 import 'pages/device_detail_page.dart';
 import 'pages/devices_page.dart';
@@ -20,6 +21,7 @@ import 'theme.dart';
 import 'update_ui.dart';
 import 'usage_ui.dart';
 import 'widgets/common.dart';
+import 'widgets/device_card.dart' show isPhone;
 
 /// Lets pages move between pages (open a device, go back to the list).
 class Navigation extends InheritedWidget {
@@ -114,7 +116,7 @@ class _ShellState extends State<Shell> {
         PageId.settings => const SettingsPage(),
         PageId.simulator => const SimulatorPage(),
         PageId.sessions => const SessionsPage(),
-        PageId.configure => const SizedBox.shrink(),
+        PageId.configure => ConfigurePage(mac: _mac),
       };
 
   @override
@@ -123,7 +125,7 @@ class _ShellState extends State<Shell> {
     return Navigation(
       go: _go,
       child: LayoutBuilder(builder: (context, box) {
-        final phone = box.maxWidth < 640;
+        final phone = isPhone(context);
         final forcedRail = box.maxWidth < 1000;
         final folded = !phone && (forcedRail || c.settings.railFolded);
         final item = navItem(_page);
@@ -134,13 +136,19 @@ class _ShellState extends State<Shell> {
             key: _scaffold,
             drawer: Drawer(
               width: 260,
-              child: _Sidebar(
-                current: _page,
-                folded: false,
-                onSelect: (id) {
-                  Navigator.of(context).pop();
-                  _go(id);
-                },
+              // The menu's own colour behind the status bar, and its content below it and above the
+              // gesture bar — without SafeArea the brand sat under the phone's notification bar.
+              backgroundColor: context.tokens.panel,
+              child: SafeArea(
+                right: false,
+                child: _Sidebar(
+                  current: _page,
+                  folded: false,
+                  onSelect: (id) {
+                    Navigator.of(context).pop();
+                    _go(id);
+                  },
+                ),
               ),
             ),
             body: SafeArea(
@@ -218,13 +226,12 @@ class _Sidebar extends StatelessWidget {
                       item: item,
                       folded: folded,
                       active: item.id == railCurrent,
-                      pill: item.soon ? 'Soon' : (item.live && radioProblem ? 'BT' : null),
+                      needsRadio: item.live && radioProblem,
                       onTap: () => onSelect(item.id),
                     ),
                 ],
               ]),
             ),
-            if (!folded) const _Legend(),
           ]),
         ),
       ),
@@ -262,22 +269,19 @@ class _Brand extends StatelessWidget {
                 TextSpan(text: 'Pulse', style: TextStyle(color: t.accent)),
               ]), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
+              // The name, then simply which version this is — and DEV on a development copy.
               Row(children: [
                 Flexible(
-                  child: Text('Bluetooth workbench',
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: t.dim)),
-                ),
-                const SizedBox(width: 6),
-                Tooltip(
-                  message: '$protocolSource\n${kDebugMode ? 'Debug build' : 'Release build'}',
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(border: Border.all(color: t.frame), borderRadius: BorderRadius.circular(4)),
-                    child: Text(version, style: monoStyle(context, size: 10.5, color: t.dim)),
+                  child: Tooltip(
+                    message: '$protocolSource\n${kDebugMode ? 'Development build' : 'Release build'}',
+                    child: Text('Version $version',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: t.dim, fontFeatures: tabular)),
                   ),
                 ),
                 if (kDebugMode) ...[
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 6),
                   const Pill('DEV', tone: Tone.warn, small: true),
                 ],
               ]),
@@ -290,12 +294,15 @@ class _Brand extends StatelessWidget {
 }
 
 class _RailItem extends StatelessWidget {
-  const _RailItem({required this.item, required this.folded, required this.active, required this.pill, required this.onTap});
+  const _RailItem({required this.item, required this.folded, required this.active, required this.needsRadio, required this.onTap});
 
   final NavItem item;
   final bool folded;
   final bool active;
-  final String? pill;
+
+  /// The page shows live data and Bluetooth is off or not allowed: a crossed-out Bluetooth mark,
+  /// explained when hovered or held.
+  final bool needsRadio;
   final VoidCallback onTap;
 
   @override
@@ -331,7 +338,13 @@ class _RailItem extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (pill != null) Pill(pill!, tone: Tone.warn, small: true),
+                if (item.soon)
+                  const Tooltip(message: 'Not built yet', child: Pill('Soon', tone: Tone.warn, small: true))
+                else if (needsRadio)
+                  Tooltip(
+                    message: 'Turn Bluetooth on and allow BluePulse to use it to see this page live',
+                    child: Icon(Icons.bluetooth_disabled, size: 16, color: t.warn),
+                  ),
               ],
             ]),
           ),
@@ -340,30 +353,6 @@ class _RailItem extends StatelessWidget {
     );
     final semantics = Semantics(selected: active, button: true, label: item.title, child: tile);
     return folded ? Tooltip(message: '${item.module} · ${item.title}', child: semantics) : semantics;
-  }
-}
-
-class _Legend extends StatelessWidget {
-  const _Legend();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      decoration: BoxDecoration(border: Border(top: BorderSide(color: t.line))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (final e in pillLegend.entries)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(children: [
-              Pill(e.key, tone: Tone.warn, small: true),
-              const SizedBox(width: 8),
-              Expanded(child: Text(e.value, style: TextStyle(fontSize: 11.5, color: t.dim))),
-            ]),
-          ),
-      ]),
-    );
   }
 }
 
@@ -378,24 +367,17 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final c = AppScope.of(context);
-    final s = c.status;
-    final count = c.registry.devices.length;
 
+    // One icon says what the radio is doing; the page says how many devices, once.
     final chips = <Widget>[
       if (item.live) ...[
-        _radioChip(context, c),
-        if (!phone)
+        if (c.isDemo) _radioChip(context, c),
+        // A phone's bar has no room for it; the Devices page says how many are in focus.
+        if (c.book.focus.isNotEmpty && !phone)
           StatusChip(
-            text: s.scanning ? 'Scanning · $count' : 'Stopped',
-            tone: s.scanning ? Tone.ok : Tone.muted,
-            glow: s.scanning,
-            detail: s.scanning ? '$count devices this session' : null,
-          ),
-        if (c.book.focus.isNotEmpty)
-          StatusChip(
-            text: 'Focus · ${c.book.focus.length}',
+            text: 'Pinned · ${c.book.focus.length}',
             tone: Tone.accent,
-            detail: 'Devices in focus refresh fastest',
+            detail: 'Pinned devices stay on top and refresh fastest',
             onTap: () => Navigation.of(context).go(PageId.devices),
           ),
       ],
@@ -418,34 +400,21 @@ class _TopBar extends StatelessWidget {
         Expanded(
           child: HoldTip(
             message: item.tip,
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: t.text)),
-              Text(item.module,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: t.dim)),
-            ]),
+            child: Text(item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: t.text)),
           ),
         ),
         ...chips.expand((w) => [w, const SizedBox(width: 8)]),
         if (!phone || !item.live) ...[const UpdateChip(), const SizedBox(width: 4)],
-        _ThemeButton(settings: c.settings),
-        if (item.live) ...[
-          const SizedBox(width: 6),
-          if (phone)
-            IconButton.filled(
-              onPressed: c.toggleScan,
-              tooltip: c.scanning ? 'Stop scan' : 'Start scan',
-              icon: Icon(c.scanning ? Icons.stop : Icons.play_arrow, size: 20),
-            )
-          else
-            FilledButton.icon(
-              onPressed: c.toggleScan,
-              icon: Icon(c.scanning ? Icons.stop : Icons.play_arrow, size: 18),
-              label: Text(c.scanning ? 'Stop scan' : 'Start scan'),
-            ),
+        // On a phone the scanning pages need the room (Clear, the scan button); Settings has the theme too.
+        if (!phone || !item.live) _ThemeButton(settings: c.settings),
+        if ((item.id == PageId.overview || item.id == PageId.devices) && c.registry.totalPackets > 0) ...[
+          const SizedBox(width: 4),
+          _ClearButton(phone: phone),
         ],
+        if (item.live) ...[const SizedBox(width: 6), _ScanButton(controller: c)],
         const SizedBox(width: 6),
       ]),
     );
@@ -474,6 +443,101 @@ class _TopBar extends StatelessWidget {
     };
   }
 }
+
+/// Empties the device list — on the Overview and Devices pages, where a busy place fills it.
+class _ClearButton extends StatelessWidget {
+  const _ClearButton({required this.phone});
+
+  final bool phone;
+
+  Future<void> _clear(BuildContext context) async {
+    final c = AppScope.read(context);
+    final ok = await confirmDestructive(
+      context,
+      title: 'Clear the list?',
+      sentence: 'Every device and packet heard so far is removed from the screen. Devices still in range come '
+          'back as they are heard; the saved session is kept.',
+      action: 'Clear',
+    );
+    if (ok) c.clearDevices();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    if (phone) {
+      return IconButton(
+        onPressed: () => _clear(context),
+        tooltip: 'Clear the list',
+        icon: Icon(Icons.delete_sweep_outlined, size: 20, color: t.dim),
+      );
+    }
+    return HoldTip(
+      message: 'Removes every device and packet from the screen; devices still in range come back as they are '
+          'heard. The saved session is kept',
+      child: OutlinedButton.icon(
+        onPressed: () => _clear(context),
+        icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+        label: const Text('Clear'),
+      ),
+    );
+  }
+}
+
+/// One button for the radio and the scan: it glows while scanning (tap to stop), shows plain while
+/// Bluetooth is on but idle (tap to scan), and is grey while Bluetooth is off or not permitted — a tap
+/// then turns it on or asks for the permission.
+class _ScanButton extends StatelessWidget {
+  const _ScanButton({required this.controller});
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final c = controller;
+    final radio = c.isDemo ? RadioState.on : c.status.radio;
+    final (icon, look, tip, VoidCallback? tap) = switch (radio) {
+      RadioState.on when c.scanning => (Icons.bluetooth_searching, _Look.glow, 'Scanning · tap to stop', c.stopScan),
+      RadioState.on => (Icons.bluetooth, _Look.plain, 'Bluetooth on · tap to scan', c.startScan),
+      RadioState.off => (Icons.bluetooth_disabled, _Look.grey, 'Bluetooth is off · tap to turn it on', c.scanner.enableRadio),
+      RadioState.unauthorized =>
+        (Icons.bluetooth_disabled, _Look.grey, 'BluePulse may not use Bluetooth · tap to allow it', c.scanner.requestPermission),
+      RadioState.unsupported => (Icons.bluetooth_disabled, _Look.grey, c.status.error ?? 'No Bluetooth adapter', null),
+      RadioState.unknown => (Icons.bluetooth, _Look.grey, 'Bluetooth …', c.startScan),
+    };
+    final (fill, border, color, glow) = switch (look) {
+      _Look.glow => (t.accent, t.accent, Colors.white, true),
+      _Look.plain => (Colors.transparent, t.text.withValues(alpha: 0.75), t.text, false),
+      _Look.grey => (Colors.transparent, t.line, t.muted, false),
+    };
+    return Tooltip(
+      message: tip,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: tap,
+          customBorder: const CircleBorder(),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: fill,
+              border: Border.all(color: border, width: 1.5),
+              boxShadow: glow ? [BoxShadow(color: t.accent.withValues(alpha: 0.6), blurRadius: 16, spreadRadius: 1)] : null,
+            ),
+            child: Icon(icon, size: 22, color: color),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _Look { glow, plain, grey }
 
 class _ThemeButton extends StatelessWidget {
   const _ThemeButton({required this.settings});

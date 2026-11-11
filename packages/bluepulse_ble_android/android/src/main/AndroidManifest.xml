@@ -5,4 +5,18 @@
     <!-- Before Android 12 these cover advertising and renaming; granted at install. -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+
+    <!-- Scanning with the screen off or the app out of sight: a foreground service holds the app in
+         the foreground (type connectedDevice, allowed with the Bluetooth scan permission), and its
+         notification needs POST_NOTIFICATIONS from Android 13. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <service
+            android:name="com.mapmyindia.bluepulse.bluepulse_ble_android.ScanKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+    </application>
 </manifest>

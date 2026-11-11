@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'error_log.dart';
 
 /// What the person knows about devices, kept on this computer: their own names for them (tags) and
 /// which devices are in focus. Debug builds keep their own copy, like the settings.
@@ -125,8 +126,9 @@ class DeviceBook extends ChangeNotifier {
           });
         }
       }
-    } catch (_) {
+    } catch (e) {
       // A damaged entry is dropped rather than stopping the app.
+      errorLog.warn('settings', 'Saved device names were damaged; the damaged part was dropped', error: e);
     }
     _focus.addAll(p.getStringList('${_prefix}focus') ?? const []);
     final w = p.getInt('${_prefix}detailWindow');
@@ -143,8 +145,9 @@ class DeviceBook extends ChangeNotifier {
           });
         }
       }
-    } catch (_) {
+    } catch (e) {
       // A damaged layout falls back to the default.
+      errorLog.warn('settings', 'Saved chart layout was damaged; using the default', error: e);
     }
   }
 

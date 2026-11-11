@@ -1,6 +1,9 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+
 #include <optional>
+#include <variant>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -27,6 +30,45 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  // The title bar follows the app's theme, not the system's: the app sends
+  // dark or light and its top bar's colours (0xAARRGGBB) before the window is
+  // first shown, and again whenever its theme changes.
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "bluepulse/window",
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() != "setTitleBar") {
+          result->NotImplemented();
+          return;
+        }
+        const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+        if (args == nullptr) {
+          result->Error("bad_arguments", "setTitleBar takes a map");
+          return;
+        }
+        auto value = [args](const char* key) -> const flutter::EncodableValue* {
+          auto it = args->find(flutter::EncodableValue(key));
+          return it == args->end() ? nullptr : &it->second;
+        };
+        auto color = [&value](const char* key) -> COLORREF {
+          const auto* v = value(key);
+          if (v == nullptr || v->IsNull()) {
+            return 0;
+          }
+          const int64_t argb = v->LongValue();
+          return RGB((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
+        };
+        const auto* dark = value("dark");
+        SetTitleBarColors(dark != nullptr && std::holds_alternative<bool>(*dark) &&
+                              std::get<bool>(*dark),
+                          color("caption"), color("text"), color("border"));
+        result->Success();
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -40,6 +82,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  window_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

@@ -5,6 +5,13 @@ enum ThemeChoice { auto, light, dark }
 
 enum ScanSource { live, demo }
 
+/// How lists of devices are shown on a wide screen: tiles (as on a phone) or a table.
+enum DeviceView { tiles, list }
+
+/// The order of device tiles (a table sorts by its headers). [found]: the order the app first heard
+/// them — a new device joins at the bottom and nothing moves.
+enum DeviceSort { found, name, signal, battery, lastSeen }
+
 /// User settings, persisted. Debug builds keep their own copy (key prefix `dev.`) so a development
 /// run never changes the release app's settings.
 class AppSettings extends ChangeNotifier {
@@ -39,6 +46,15 @@ class AppSettings extends ChangeNotifier {
   /// Shortest silence before a device counts as not seen.
   int notSeenMinSeconds = 15;
 
+  /// The folder the person chose for BluePulse's files; null for the default (`lib/app/paths.dart`).
+  String? filesFolder;
+
+  /// Tiles or a table, the same on every page that lists devices (a phone always shows tiles).
+  DeviceView deviceView = DeviceView.list;
+
+  /// The order of device tiles, the same on every page that shows them.
+  DeviceSort deviceSort = DeviceSort.found;
+
   void _load() {
     final p = _prefs;
     if (p == null) {
@@ -56,6 +72,9 @@ class AppSettings extends ChangeNotifier {
     awayDbm = p.getInt('${_prefix}awayDbm') ?? -85;
     pathLossExponent = p.getDouble('${_prefix}pathLossExponent') ?? 2.5;
     notSeenMinSeconds = p.getInt('${_prefix}notSeenMinSeconds') ?? 15;
+    filesFolder = p.getString('${_prefix}filesFolder');
+    deviceView = DeviceView.values.elementAtOrNull(p.getInt('${_prefix}deviceView') ?? 1) ?? DeviceView.list;
+    deviceSort = DeviceSort.values.elementAtOrNull(p.getInt('${_prefix}deviceSort') ?? 0) ?? DeviceSort.found;
   }
 
   bool get liveSupported => _liveSupported;
@@ -81,5 +100,9 @@ class AppSettings extends ChangeNotifier {
     p.setInt('${_prefix}awayDbm', awayDbm);
     p.setDouble('${_prefix}pathLossExponent', pathLossExponent);
     p.setInt('${_prefix}notSeenMinSeconds', notSeenMinSeconds);
+    p.setInt('${_prefix}deviceView', deviceView.index);
+    p.setInt('${_prefix}deviceSort', deviceSort.index);
+    final folder = filesFolder;
+    folder == null ? p.remove('${_prefix}filesFolder') : p.setString('${_prefix}filesFolder', folder);
   }
 }

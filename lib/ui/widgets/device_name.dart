@@ -10,17 +10,25 @@ String deviceLabel(DeviceBook book, EyeDevice d) => book.tagOf(d.mac) ?? d.name 
 
 /// A device's tag in bold with its advertised name after it, or just the advertised name.
 class DeviceName extends StatelessWidget {
-  const DeviceName(this.device, {super.key, this.size = 13});
+  const DeviceName(this.device, {super.key, this.size = 13, this.bold = false});
 
   final EyeDevice device;
   final double size;
+
+  /// The advertised name in semi-bold too (a phone's device card), not only the person's own.
+  final bool bold;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final tag = AppScope.of(context).book.tagOf(device.mac);
     final name = device.name ?? device.mac;
-    if (tag == null) return Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: size));
+    if (tag == null) {
+      return Text(name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: size, fontWeight: bold ? FontWeight.w600 : null, color: bold ? t.text : null));
+    }
     return Text.rich(
       TextSpan(children: [
         TextSpan(text: tag, style: TextStyle(fontWeight: FontWeight.w600, color: t.text)),

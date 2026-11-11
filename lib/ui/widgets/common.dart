@@ -203,10 +203,14 @@ class StatTile extends StatelessWidget {
     this.tone = Tone.neutral,
     this.tip = '',
     this.onTap,
+    this.icon,
   });
 
   final String label;
   final String value;
+
+  /// Shown before the label, so the tile is recognised before it is read.
+  final IconData? icon;
 
   /// Smaller figure beside the value (a count beside a share).
   final String? secondary;
@@ -239,7 +243,15 @@ class StatTile extends StatelessWidget {
               ),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label.toUpperCase(), style: labelStyle(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Row(children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 16, color: tone == Tone.neutral ? t.dim : c),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(label.toUpperCase(), style: labelStyle(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ]),
               const SizedBox(height: 6),
               // Value and its unit as one line: when space runs out, the unit is cut first, never the figure.
               Text.rich(
@@ -463,3 +475,50 @@ class Fact extends StatelessWidget {
         ]),
       );
 }
+
+/// Search as a small button: the box opens when wanted, and an active search shows as a chip that
+/// clears with its ✕.
+class SearchButton extends StatelessWidget {
+  const SearchButton({super.key, required this.query, required this.hint, required this.onChanged});
+
+  final String query;
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  Future<void> _ask(BuildContext context) async {
+    final ctl = TextEditingController(text: query);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Search'),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          decoration: InputDecoration(prefixIcon: const Icon(Icons.search, size: 18), hintText: hint),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Clear')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Search')),
+        ],
+      ),
+    );
+    ctl.dispose();
+    if (result != null) onChanged(result.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (query.isEmpty) {
+      return IconButton.outlined(onPressed: () => _ask(context), tooltip: 'Search', icon: const Icon(Icons.search, size: 20));
+    }
+    return InputChip(
+      avatar: const Icon(Icons.search, size: 16),
+      label: Text('"$query"'),
+      onPressed: () => _ask(context),
+      onDeleted: () => onChanged(''),
+      deleteButtonTooltipMessage: 'Clear the search',
+    );
+  }
+}
+

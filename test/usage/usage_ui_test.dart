@@ -91,12 +91,17 @@ void main() {
   testWidgets('Settings shows who this copy reports as, and where to', (tester) async {
     final (c, _) = await pumpWithUsage(tester,
         stored: {'installId': 'a' * 32, 'name': 'Shahbaz Khan'}, page: PageId.settings);
-    expect(find.text('Usage reporting'), findsOneWidget);
     expect(find.text('Shahbaz Khan'), findsOneWidget);
-    expect(find.text('Team'), findsNothing);
-    expect(find.text('a' * 32), findsOneWidget);
-    expect(find.text('example.supabase.co'), findsOneWidget);
     expect(find.text('Edit name'), findsOneWidget);
+    expect(find.text('Team'), findsNothing);
+    expect(find.text('a' * 32), findsNothing, reason: 'the install ID waits under Details');
+    await tester.ensureVisible(find.text('Details'));
+    await tester.tap(find.text('Details'));
+    await tester.pumpAndSettle();
+    expect(find.text('a' * 32), findsOneWidget, reason: 'the install ID, for support');
+    expect(find.text('example.supabase.co'), findsNothing, reason: 'where reports go is not shown');
+    expect(find.text('Send now'), findsNothing);
+    await tester.ensureVisible(find.text('Edit name'));
 
     await tester.tap(find.text('Edit name'));
     await tester.pumpAndSettle();
@@ -127,7 +132,11 @@ void main() {
     final (c, _) = await pumpWithUsage(tester, enabled: false, page: PageId.settings);
     expect(find.text(welcomeTitle), findsNothing);
     expect(find.textContaining('Hello'), findsNothing);
-    expect(find.text('Usage reporting is not set in this build'), findsOneWidget);
+    expect(find.text('Edit name'), findsNothing, reason: 'no name to edit');
+    await tester.ensureVisible(find.text('Details'));
+    await tester.tap(find.text('Details'));
+    await tester.pumpAndSettle();
+    expect(find.text('Install ID'), findsNothing, reason: 'no reporting, no install ID to show');
     await finish(tester, c);
   });
 

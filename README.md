@@ -50,10 +50,21 @@ counter, so missed updates can be counted exactly.
 
 | | Android (8+) | Windows |
 |---|---|---|
-| Interval | exact, kept by the radio (AdvertisingSet) | Windows sets its own rate: one short burst (60–200 ms) every interval |
-| Name | the phone's Bluetooth is renamed while transmitting and named back on Stop (also at the next start if the app was closed mid-run) | none — Windows does not publish names |
+| Interval | exact, kept by the radio (AdvertisingSet) | Windows sets its own rate: one burst (60–500 ms, half the interval) every interval |
+| Name | the phone's Bluetooth is renamed while transmitting and named back on Stop (also at the next start if the app was closed mid-run) | none — Windows refuses a name (tested: both the LocalName property and a raw 0x09 section) |
 | Scan response | yes | none — the scan response's data goes out in alternate bursts |
 | Transmit power | ultra low −21 / low −15 / medium −7 / high +1 dBm | taken as a preference where Windows supports it |
+| Address | random, chosen by Android, changed every few minutes; apps cannot read it | random, a new one **for every burst**; apps cannot read it |
+
+Neither platform lets an app choose or read the address it sends from, so a simulated device has no
+MAC to look up. Instead each packet with room carries the **BluePulse tag** — manufacturer data for
+company `0xFFFF` (kept by the Bluetooth SIG for tests), `B` `P` and a 4-byte ID, 10 bytes in all —
+and a BluePulse receiver lists every packet with the same ID as **one device, `SIM-1A2B3C4D`**, in
+place of a MAC (the *Receiver* tile on the Simulator page shows which). A simulated beacon's ID follows
+from its beacon ID, so the beacon frames Windows sends in bursts of their own, with no room left for
+the tag, join the same device. The tag never pushes out a name (on Android an EYE SENSOR's name
+leaves it no room; that device is listed by its name and address as before). *BluePulse tag* off
+sends only what a real device sends.
 
 ## Setup
 
@@ -111,8 +122,18 @@ The web build opens a given view from its URL, for demos and screenshots:
 
 | What | Windows | Android |
 |---|---|---|
-| Sessions — every live scan, Start to Stop (`lib/core/session_store.dart`) | `Documents\BluePulse\sessions` | app documents `sessions/`, shared from the Sessions page |
-| Device logs — *Record* and *Save log* on a device page | `Documents\BluePulse\logs` | app documents `logs/`, through the share sheet |
+| Sessions — every live scan, Start to Stop (`lib/core/session_store.dart`) | `C:\Users\<you>\BluePulse\sessions` | `Documents/BluePulse/sessions`, shared from the Sessions page |
+| Device logs (*Record*, *Save log*) and multi-device logs (*Devices → Log*) | `…\BluePulse\logs` | `Documents/BluePulse/logs`, also through the share sheet |
+| Error log — one line per event (`lib/core/error_log.dart`) | `…\BluePulse\BluePulse_errors.log` (+ `.1.log`) | `Documents/BluePulse/BluePulse_errors.log` |
+| Update downloads | beside the installed versions (`versions\.download`) | the app's cache (the system installer reads it there) |
+
+One folder per device, set in `lib/app/paths.dart`. On Windows it sits beside Documents, not in
+it: Documents is often synced by OneDrive, which would upload a growing log every few seconds. On
+Android, *Internal storage › Documents › BluePulse* is visible in the Files app and over USB; a
+development build uses `BluePulse DEV` (Android lets each app open only the files it made). Where
+that folder cannot be written, the app's own folder is used and the error log says so.
+*Settings → Files* shows the folder, changes it (any folder on Windows; Documents or Download on a
+phone, the files already saved moving along if wanted) and opens the error log.
 
 Both are CSV with the same columns (`RxCsv` in `lib/core/rx_log.dart`); a session's summary (start,
 end, packets, devices) sits beside it as `.json`.

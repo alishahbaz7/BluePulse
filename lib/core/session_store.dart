@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'rx_log.dart';
+import 'error_log.dart';
 
 /// One recorded session: a scan from *Start scan* to *Stop scan*, every packet from every tracked
 /// device in one CSV (the received-packets columns), with a small JSON beside it for the list.
@@ -138,7 +139,8 @@ class SessionWriter {
 class SessionStore {
   SessionStore(this.dir);
 
-  final Directory dir;
+  /// Where sessions are saved; moves when the person changes the files folder.
+  Directory dir;
 
   static const prefix = 'BluePulse_session_';
 
@@ -196,8 +198,9 @@ class SessionStore {
     Map<String, Object?>? m;
     try {
       if (meta.existsSync()) m = jsonDecode(meta.readAsStringSync()) as Map<String, Object?>;
-    } catch (_) {
+    } catch (e) {
       m = null; // a damaged summary: list the file by its name
+      errorLog.warn('sessions', 'Damaged session summary ${p.basename(meta.path)}', error: e);
     }
     DateTime? time(String key) => m?[key] is String ? DateTime.tryParse(m![key] as String)?.toLocal() : null;
     final started = time('started') ?? startFromName(p.basename(csv.path)) ?? csv.lastModifiedSync();

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -17,15 +18,22 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../update/update_fixtures.dart' show TestHost;
 
-/// Records every report; fails while [failWith] is set.
+/// Records every report; fails while [failWith] is set (with anything at all), and holds each send
+/// until [hold] completes while it is set — a server that does not answer.
 class FakeUsageTransport implements UsageTransport {
   final reports = <Map<String, Object?>>[];
-  UsageSendException? failWith;
+  Object? failWith;
+  Completer<void>? hold;
+
+  /// Sends tried, whatever became of them.
+  int calls = 0;
 
   @override
   Future<Object?> send(Map<String, Object?> report) async {
+    calls++;
     // Round-trip through JSON, as the wire does, so the test sees exactly what the server would.
     final copy = jsonDecode(jsonEncode(report)) as Map<String, Object?>;
+    if (hold != null) await hold!.future;
     if (failWith != null) throw failWith!;
     reports.add(copy);
     return {'ok': true};
@@ -197,6 +205,7 @@ void main() {
       final rig = Rig();
       await rig.start();
       await rig.service.setName('  Shahbaz Khan ');
+      await pump();
       expect(rig.service.needsName, isFalse);
       final install = rig.transport.reports.last['install']! as Map;
       expect(install['name'], 'Shahbaz Khan');
@@ -280,6 +289,76 @@ void main() {
       await rig.start();
       expect(rig.service.waiting, 0);
       expect(rig.service.error, contains('dropped'));
+    });
+
+    test('the name never waits for the server: saved at once, sent when the server answers', () async {
+      final rig = Rig();
+      final hold = rig.transport.hold = Completer<void>();
+      await rig.start();
+      expect(rig.service.sending, isTrue, reason: 'the first report is still on its way');
+
+      await rig.service.setName('Shahbaz').timeout(const Duration(seconds: 1));
+      expect(rig.service.needsName, isFalse, reason: 'the welcome closes at once');
+      expect(rig.store.read('name'), 'Shahbaz');
+
+      hold.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect((rig.transport.reports.last['install']! as Map)['name'], 'Shahbaz',
+          reason: 'sent again once the first send was through');
+    });
+
+    test('a send that hangs gives up, keeps its reports and lets the next one through', () async {
+      final rig = Rig();
+      await rig.start();
+      rig.service.record('export_done');
+      final hold = rig.transport.hold = Completer<void>();
+      await rig.service.flush(timeout: const Duration(milliseconds: 50));
+      expect(rig.service.sending, isFalse, reason: 'never stuck: the next try is not blocked');
+      expect(rig.service.error, contains('in time'));
+      expect(rig.service.waiting, 1, reason: 'still on this device');
+      expect(rig.service.failures, 1);
+      hold.complete();
+    });
+
+    test('anything unexpected is caught: reports kept, nothing thrown into the app', () async {
+      final rig = Rig();
+      rig.transport.failWith = StateError('something nobody planned for');
+      await rig.start();
+      rig.service.record('export_done');
+      await expectLater(rig.service.flush(), completes);
+      expect(rig.service.error, contains('StateError'));
+      expect(rig.service.waiting, 2);
+      rig.transport.failWith = null;
+      await rig.service.flush();
+      expect(rig.transport.kinds, ['first_start', 'export_done']);
+    });
+
+    test('a server that is down is asked less and less often, and normally again once it answers', () async {
+      final rig = Rig();
+      rig.transport.failWith = UsageSendException('No connection');
+      await rig.start();
+      expect(rig.service.retryEvery, const Duration(minutes: 10));
+
+      Future<int> tickAfter(int minutes) async {
+        rig.advance(Duration(minutes: minutes));
+        rig.service.tick();
+        await pump();
+        return rig.transport.calls;
+      }
+
+      expect(await tickAfter(6), 1, reason: 'not yet: 10 minutes after one failure');
+      expect(await tickAfter(5), 2);
+      expect(rig.service.retryEvery, const Duration(minutes: 20));
+      expect(await tickAfter(21), 3);
+      expect(rig.service.retryEvery, const Duration(minutes: 30), reason: 'at most every 30 minutes');
+      expect(await tickAfter(31), 4);
+      expect(rig.service.retryEvery, const Duration(minutes: 30));
+
+      rig.transport.failWith = null;
+      expect(await tickAfter(31), 5);
+      expect(rig.service.failures, 0);
+      expect(rig.service.retryEvery, UsageConfig.sendEvery);
+      expect(rig.service.waiting, 0);
     });
 
     test('a long offline spell goes out in batches', () async {
