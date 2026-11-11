@@ -3,6 +3,10 @@
 The version is declared once, in `pubspec.yaml`; each version is worked on a branch of the same name.
 Releases are named `BluePulse-v<version>`.
 
+## 1.0.3
+
+In progress.
+
 ## 1.0.2
 
 - **A pin counts only while its device is in the list.** Pins are kept between runs, so a device
