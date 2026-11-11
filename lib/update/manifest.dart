@@ -21,13 +21,13 @@ class UpdateAsset {
 /// ```json
 /// {
 ///   "app": "BluePulse",
-///   "version": "1.1.0",
+///   "version": "9.1.0",
 ///   "published": "2026-11-20T10:00:00Z",
 ///   "notes": "What changed and why",
-///   "minimumVersion": "1.0.2",
+///   "minimumVersion": "9.0.2",
 ///   "assets": {
-///     "windows": {"file": "BluePulse-v1.1.0.zip", "url": "https://…", "sha256": "…", "size": 123},
-///     "android": {"file": "BluePulse-v1.1.0.apk", "url": "https://…", "sha256": "…", "size": 456}
+///     "windows": {"file": "BluePulse-v9.1.0.zip", "url": "https://…", "sha256": "…", "size": 123},
+///     "android": {"file": "BluePulse-v9.1.0.apk", "url": "https://…", "sha256": "…", "size": 456}
 ///   }
 /// }
 /// ```
